@@ -64,7 +64,7 @@ if __name__ == '__main__':
                 ########## convert to structures ##########
                 args.logger.info("Converting generated tensors into Structures...")
                 structures, _ = dict_to_valid_struct(gen)
-                df = relax_structures(structures, device=device, steps=args.max_relax_steps, mlff=args.mlff, logger=logger)
+                df = relax_structures(structures, device=device, steps=args.max_relax_steps, mlff=args.mlff)
                 df.to_json(relax_path)
         
             ########## change to Reference dataset (MatterGen) ##########
