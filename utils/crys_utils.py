@@ -1,3 +1,9 @@
+"""Crystal conversion and generation helpers shared across the repo.
+
+These utilities validate generated tensors, convert between structures and
+model-friendly representations, and support the final sampling pipeline.
+"""
+
 import numpy as np
 import torch
 import smact
@@ -11,6 +17,7 @@ from pymatgen.core import Structure, Element
 
 class Crystal(object):
     def __init__(self, crys_array_dict, gt=False, cart=False, test_validity=True):
+        """Wrap a generated crystal dictionary and validate the resulting structure."""
         self.cart = cart
         if self.cart:
             self.card_coords = crys_array_dict['cart_coords']
@@ -39,6 +46,7 @@ class Crystal(object):
                 self.valid = False
 
     def get_structure(self):
+        """Build a pymatgen Structure from the stored lattice and coordinates."""
         try:
             lattice = self.matrix
             if self.cart:
@@ -52,6 +60,7 @@ class Crystal(object):
             self.constructed = False
     
     def get_composition(self):
+        """Derive the reduced composition tuple from the atom types."""
         elem_counter = Counter(self.atom_types)
         composition = [(elem, elem_counter[elem])
                        for elem in sorted(elem_counter.keys())]
@@ -62,6 +71,7 @@ class Crystal(object):
         self.comps = tuple(counts.astype('int').tolist())
 
     def get_validity(self):
+        """Combine composition and structural checks into one validity flag."""
         self.comp_valid = self.smact_validity(self.elems, self.comps)
         if self.constructed:
             self.struct_valid = self.structure_validity(self.structure)
@@ -70,6 +80,7 @@ class Crystal(object):
         self.valid = self.comp_valid and self.struct_valid
     
     def structure_validity(self, structure: Structure, cutoff: float = 0.5) -> bool:
+        """Reject structures with atoms that are too close or with tiny volume."""
         dist_mat = structure.distance_matrix
         # Pad diagonal with a large number
         dist_mat = dist_mat + np.diag(np.ones(dist_mat.shape[0]) * (cutoff + 10.0))
@@ -161,6 +172,7 @@ class Crystal(object):
             return False
 
 def vector2matrix(vector):
+    """Convert a 6D upper-triangular lattice vector into a 3x3 matrix."""
     A = torch.zeros(3, 3, dtype=torch.float32, device=vector.device)
     A[0, 0] = vector[0]
     A[0, 1] = A[1, 0] = vector[1]
@@ -171,6 +183,7 @@ def vector2matrix(vector):
     return A
 
 def replace_elements(structure: Structure) -> Structure:
+    """Clamp unsupported element types to the MatterSim maximum atomic number."""
     ## This def is to replace elements > 94 with 94
     ## MatterSim only accepts elements with index <=94
     for i, site in enumerate(structure):
@@ -180,6 +193,7 @@ def replace_elements(structure: Structure) -> Structure:
     return structure
 
 def dict_to_struct(gen):
+    """Convert generated crystal dictionaries into pymatgen structures."""
     structures = []
     valid_index = []
     k = 0
@@ -197,6 +211,7 @@ def dict_to_struct(gen):
     return structures, v_indicator.bool().numpy()
 
 def dict_to_valid_struct(gen):
+    """Convert only valid generated dictionaries into pymatgen structures."""
     structures = []
     valid_idx = []
     for i, one in tqdm(enumerate(gen)):
@@ -209,6 +224,7 @@ def dict_to_valid_struct(gen):
     return structures, valid_idx
 
 def final_generate_one_batch(dataname, turn_id):
+    """Sample one generation batch from the finetuned model and save it."""
     import os
     from components.base.model.ddpm import DDPM
     from components.finetune.dataloader import CrystalDataset

@@ -1,6 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+"""Reference-dataset grouping helpers for formulas and chemical systems.
+
+These functions build the maps used to query reference entries by reduced
+formula, subsystem, or chemical-system membership.
+"""
+
 from collections import defaultdict
 from itertools import combinations
 from typing import Any, Callable, Iterable, TypeVar
@@ -49,6 +55,7 @@ def group_list_items_into_dict(
     return result
 
 def expand_into_subsystems(chemical_system: str) -> list[tuple[str, ...]]:
+    """Enumerate all non-empty element subsets of a chemical system."""
     elements = chemical_system.split("-")
     list_combinations = []
     for n in range(1, len(elements) + 1):

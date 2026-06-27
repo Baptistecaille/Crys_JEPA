@@ -1,3 +1,9 @@
+"""Screen relaxed candidates using JEPA embedding similarity.
+
+The script compares generated crystals against the reference set and writes
+ranked screening outputs used to select candidates for fine-tuning.
+"""
+
 import os
 import torch
 import torch.nn.functional as F
@@ -14,6 +20,7 @@ from itertools import combinations
 from tqdm import tqdm
 
 def expand_into_subsystems(chemical_system: str) -> list[tuple[str, ...]]:
+    """Enumerate all non-empty element subsets of a chemical system."""
     elements = chemical_system.split('-')
     list_combinations = []
     for n in range(1, len(elements) + 1):
@@ -21,6 +28,7 @@ def expand_into_subsystems(chemical_system: str) -> list[tuple[str, ...]]:
     return list_combinations
 
 def compute_lattice_polar_decomposition(lattice_matrix: torch.Tensor) -> torch.Tensor:
+    """Convert a lattice matrix into the compact symmetric representation."""
     W, S, V_transp = torch.linalg.svd(lattice_matrix)
     S_square = torch.diag_embed(S)
     V = V_transp.transpose(0, 1)
@@ -36,6 +44,7 @@ def compute_lattice_polar_decomposition(lattice_matrix: torch.Tensor) -> torch.T
     return symm_lattice_matrix
 
 def deal_structures(structures, matrix_scaler):
+    """Convert relaxed structures into model tensors for JEPA screening."""
     matrix, frac_coords, atomic_numbers, num_atoms = [], [], [], []
     for stru in structures:
         frac_coords.append(torch.FloatTensor(stru.frac_coords))
@@ -52,6 +61,7 @@ def deal_structures(structures, matrix_scaler):
     return scalar_matrix.float().cuda(), frac_coords.float().cuda(), atomic_numbers.cuda(), num_atoms.cuda()
 
 def get_emb(data, model):
+    """Encode batched structures into JEPA embeddings."""
     matrix, frac_coords, atomic_numbers, num_atoms = data
     b = matrix.shape[0]
     batch = torch.repeat_interleave(torch.arange(b).to(matrix.device), num_atoms)

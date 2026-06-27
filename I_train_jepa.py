@@ -1,3 +1,9 @@
+"""Distributed training entrypoint for the JEPA encoder.
+
+This script builds the JEPA dataset, launches one process per GPU with DDP,
+and saves the best checkpoint according to the average training loss.
+"""
+
 import os
 import torch
 import torch.distributed as dist
@@ -18,6 +24,7 @@ from tqdm import tqdm
 warnings.filterwarnings('ignore')
 
 def collate(batch):
+    """Merge JEPA samples into the batched tensors expected by the model."""
     frac_coords, matrix, atomic_numbers, ori_matrix, num_atoms, ef_per_atom = zip(*batch)
     
     frac_coords = torch.cat(frac_coords, 0).float()
@@ -30,6 +37,7 @@ def collate(batch):
     return frac_coords, matrix, atomic_numbers, ori_matrix, num_atoms, ef_per_atom
 
 def train(rank, world_size, args, config):
+    """Run one DDP training worker for the JEPA encoder."""
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = args.port
     dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)

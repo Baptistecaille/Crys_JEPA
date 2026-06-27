@@ -1,6 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+"""Immutable wrapper around the packaged reference entries.
+
+This abstraction exposes cached formula and chemical-system groupings for the
+benchmark datasets consumed by the evaluator.
+"""
+
 from functools import cached_property
 from typing import Iterable, Iterator, Mapping
 from pymatgen.entries.computed_entries import ComputedStructureEntry
@@ -18,26 +24,32 @@ class ReferenceDataset(Iterable[ComputedStructureEntry]):
         name: str,
         impl: "ReferenceDatasetImpl",
     ):
+        """Wrap a concrete reference-dataset implementation with a stable API."""
         self.name = name
         # The Bridge pattern. The actual implementation is defined in ReferenceDatasetImpl.
         self.impl = impl
 
     @staticmethod
     def from_entries(name: str, entries: Iterable[ComputedStructureEntry]) -> "ReferenceDataset":
+        """Create an in-memory reference dataset from computed entries."""
         return ReferenceDataset(name, ReferenceDatasetImpl(entries))
 
     def __iter__(self) -> Iterator[ComputedStructureEntry]:
+        """Iterate over all reference entries."""
         yield from self.impl
 
     def __len__(self) -> int:
+        """Return the number of reference entries."""
         return len(self.impl)
 
     @property
     def entries_by_reduced_formula(self) -> Mapping[str, list[ComputedStructureEntry]]:
+        """Group entries by reduced formula."""
         return self.impl.entries_by_reduced_formula
 
     @property
     def entries_by_chemsys(self) -> Mapping[str, list[ComputedStructureEntry]]:
+        """Group entries by chemical system."""
         return self.impl.entries_by_chemsys
 
     @cached_property
@@ -50,12 +62,15 @@ class ReferenceDatasetImpl(Iterable[ComputedStructureEntry]):
     """The implementation of ReferenceDataset. Direct access to entries is not allowed."""
 
     def __init__(self, entries: Iterable[ComputedStructureEntry]):
+        """Store the immutable entry tuple for the reference dataset."""
         self._entries = tuple(entries)
 
     def __iter__(self) -> Iterator[ComputedStructureEntry]:
+        """Iterate over the stored reference entries."""
         return iter(self._entries)
 
     def __len__(self) -> int:
+        """Return the number of stored reference entries."""
         return len(self._entries)
 
     @cached_property

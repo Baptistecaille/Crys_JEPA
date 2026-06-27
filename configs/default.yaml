@@ -1,0 +1,42 @@
+data:
+  csv_path: "data/raw/3DSC_MP.csv"
+  cif_dir: "data/raw/cifs"
+  formula_column: "formula_sc"
+  tc_column: "tc"
+  cif_column: "cif"
+  csv_comment: "#"
+  primitive: false
+  reduced: false
+
+training:
+  batch_size: 32
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  epochs: 50
+  seed: 42
+  freeze_encoder: true
+  lambda_tc: 1.0
+  regression_loss: "smooth_l1"
+  device: "cuda"
+
+splits:
+  train: 0.8
+  val: 0.1
+  test: 0.1
+
+model:
+  z_dim: 512
+  head_hidden_dim: 256
+  dropout: 0.1
+  use_uncertainty: true
+  use_dft_features: false
+  crys_jepa_checkpoint: null
+  crys_jepa_config: "configs/jepa/mp.yml"
+
+checkpoints:
+  save_dir: "checkpoints"
+  best_name: "best.pt"
+
+evaluation:
+  high_tc_threshold: 77.0
+  predictions_csv: "predictions.csv"

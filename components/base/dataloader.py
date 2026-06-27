@@ -1,3 +1,9 @@
+"""Dataset loader for the base diffusion model.
+
+This module reads crystal CSV files, preprocesses CIF strings into tensors,
+and caches the prepared dataset so DDPM training can reuse it efficiently.
+"""
+
 import os
 import torch
 from torch.utils.data import Dataset
@@ -9,6 +15,7 @@ import pandas as pd
 import numpy as np
 
 def type_coords(frac_coords, atomic_numbers):
+    """Sort atoms deterministically by type and fractional coordinates."""
     atomic_tensor = atomic_numbers.reshape(-1, 1)
     all_tensor = torch.cat([atomic_tensor, frac_coords], -1)
     coe = 1000*all_tensor[:, 0] + 100*all_tensor[:, 1] + 10*all_tensor[:, 2] + 1*all_tensor[:, 3]
@@ -17,6 +24,7 @@ def type_coords(frac_coords, atomic_numbers):
 
 class CrystalDataset(Dataset):
     def __init__(self, task, dataset, config, val=False):
+        """Load and cache the crystal dataset for the base DDPM stage."""
         if val:
             path = os.path.join('data', task, dataset, 'val.csv.gz')
             self.path_prepare = os.path.join('data', task, dataset, "prepared_val_data.pt")
@@ -33,9 +41,11 @@ class CrystalDataset(Dataset):
         self.matrix_scaler = None
     
     def __len__(self) -> int:
+        """Return the number of crystals in the prepared dataset."""
         return len(self.data['material_id'])
 
     def __getitem__(self, index):
+        """Return one normalized crystal sample and its atom metadata."""
         start, end = self.offset[index], self.offset[index+1]
         scaled_matrix, num_atoms = self.data['scaled_matrix'][index], self.data['num_atoms'][index]
         frac_coords = self.data['frac_coords'][start: end]
@@ -47,6 +57,7 @@ class CrystalDataset(Dataset):
         return material_id, scalar_matrix, frac_coords, atomic_numbers, num_atoms
         
     def add_scaled_matrix(self, data, scale_len=True):
+        """Scale lattice matrices by atom count before storing them."""
         matrix = data['matrix']
         num_atoms = data['num_atoms'].reshape(-1, 1)
         if scale_len:
@@ -54,6 +65,7 @@ class CrystalDataset(Dataset):
         data['scaled_matrix'] = matrix
 
     def read_from_cif(self, path):
+        """Read the source CSV and build or load the cached tensor dataset."""
         df = pd.read_csv(path, compression="gzip")
         if 'num_id' not in df.columns:
             df['num_id'] = np.arange(len(df))
@@ -77,6 +89,7 @@ class CrystalDataset(Dataset):
             self.data = torch.load(self.path_prepare, weights_only=False)
     
     def unpack(self, results):
+        """Merge per-structure preprocessing outputs into batched tensors."""
         material_id, frac_coords, atomic_numbers, matrix, num_atoms = [], [], [], [], []
         for re in results:
             material_id.append(re['material_id'])
@@ -91,6 +104,7 @@ class CrystalDataset(Dataset):
                 'matrix':matrix, 'num_atoms': num_atoms}
 
     def cif_info(self, row):
+        """Extract lattice, coordinates, and atom types from one CIF row."""
         cif, material_id = row['cif'], row['num_id']
         structure = Structure.from_str(cif, fmt='cif')
         if self.primitive:
@@ -111,6 +125,7 @@ class CrystalDataset(Dataset):
                 'matrix': matrix, 'num_atoms': num_atom}
 
     def compute_lattice_polar_decomposition(self, lattice_matrix: torch.Tensor) -> torch.Tensor:
+        """Convert a lattice matrix to a compact symmetric upper-triangular form."""
         W, S, V_transp = torch.linalg.svd(lattice_matrix)
         S_square = torch.diag_embed(S)
         V = V_transp.transpose(0, 1)

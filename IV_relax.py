@@ -1,3 +1,10 @@
+"""Relax generated crystals and compute VSUN-style screening metrics.
+
+This stage loads generated batches, relaxes each structure with an ML force
+field, converts the relaxed results into reference entries, and stores
+uniqueness/novelty indicators for later screening.
+"""
+
 import argparse
 import torch
 import pandas as pd

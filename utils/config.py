@@ -1,3 +1,9 @@
+"""Config parsing helpers for YAML files and command-line overrides.
+
+This module centralizes the custom dict action used by the training and
+evaluation entrypoints when loading experiment settings.
+"""
+
 from argparse import Action, ArgumentParser, Namespace
 import copy
 from easydict import EasyDict

@@ -1,3 +1,8 @@
+"""Generate candidate crystals from the trained base diffusion model.
+
+This script loads the latest base checkpoint and writes sampled generations
+to the per-turn output folders consumed by relaxation and screening.
+"""
 
 import os
 import torch

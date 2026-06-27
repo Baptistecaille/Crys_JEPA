@@ -1,4 +1,10 @@
 
+"""Fine-tune the base diffusion model on the selected candidate set.
+
+This stage reuses the base DDPM training loop on the finetune dataset and
+stores checkpoints for the final generation pass.
+"""
+
 import os
 import torch
 import torch.distributed as dist
@@ -19,6 +25,7 @@ from tqdm import tqdm
 warnings.filterwarnings('ignore')
     
 def train(rank, world_size, args, config):
+    """Run one DDP training worker for the fine-tuned diffusion model."""
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = args.port
     dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)

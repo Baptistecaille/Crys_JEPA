@@ -1,3 +1,9 @@
+"""Main diffusion model used for crystal generation.
+
+The DDPM wrapper combines the lattice, fractional-coordinate, and atom-type
+diffusion submodules into one training and sampling interface.
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,6 +18,7 @@ from tqdm import tqdm
 
 class DDPM(nn.Module):
     def __init__(self, config):
+        """Build the crystal diffusion model and its three noise channels."""
         super(DDPM, self).__init__()
         self.config = config
         self.h, self.w = config.dataset.max_atoms, config.dataset.max_types
@@ -21,9 +28,11 @@ class DDPM(nn.Module):
         self.type_noise, self.matrix_noise, self.frac_noise = type_noise(self.T), matrix_noise(self.T), frac_noise(self.T)
 
     def to_device(self, data):
+        """Move a batch tuple onto the configured device."""
         return [i.to(self.device) for i in data]
     
     def forward(self, data):
+        """Compute the training loss for one crystal batch."""
         matrix, frac_coords, atomic_numbers, num_atoms = self.to_device(data)
         b, device = matrix.shape[0], matrix.device
         batch = torch.repeat_interleave(torch.arange(b).to(self.device), num_atoms)
@@ -45,10 +54,12 @@ class DDPM(nn.Module):
         return loss
 
     def compose(self, matrix, type, frac):
+        """Concatenate lattice, atom-type, and fractional-coordinate features."""
         whole = torch.cat([frac, type, matrix], -1)
         return whole
     
     def reverse(self, b, num_atoms):
+        """Sample crystals by iteratively denoising all channels."""
         batch = torch.repeat_interleave(torch.arange(b).to(self.device), num_atoms)
         _, mask = to_dense_batch(batch, batch)
         max_atom = num_atoms.max()
@@ -67,6 +78,7 @@ class DDPM(nn.Module):
         return x[mask], batch
 
     def one_reverse(self, pred_noise, x, t):
+        """Apply one reverse diffusion step to the current batch state."""
         pred_matrix_noise, pred_type_noise, pred_frac_noise = pred_noise[:, :, -6:], pred_noise[:, :, 3:-6], pred_noise[:, :, :3]
         noisy_matrix, noisy_type, noisy_frac = x[:, :, -6:], x[:, :, 3:-6], x[:, :, :3]
 
@@ -77,6 +89,7 @@ class DDPM(nn.Module):
         return new_x   
 
     def cal_loss(self, pred_noise, matrix_noise, type_noise, frac_noise, mask):
+        """Average the per-channel denoising losses over valid atoms."""
         pred_matrix_noise, pred_type_noise, pred_frac_noise = pred_noise[:, :, -6:], pred_noise[:, :, 3:-6], pred_noise[:, :, :3]
         
         loss_matrix = self.matrix_noise.cal_loss(pred_matrix_noise[mask], matrix_noise[mask])

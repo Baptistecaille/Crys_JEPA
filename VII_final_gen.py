@@ -1,3 +1,9 @@
+"""Generate the final finetune batches for evaluation.
+
+This entrypoint repeatedly invokes the shared generation helper so the final
+model outputs the batches consumed by the VSUN evaluation stage.
+"""
+
 from tqdm import tqdm
 import argparse
 

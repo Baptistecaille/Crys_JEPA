@@ -1,0 +1,47 @@
+[project]
+name = "crys-jepa"
+version = "0.1.0"
+description = "Crys-JEPA: Accelerating Crystal Discovery via Embedding Screening and Generative Refinement"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "ase==3.25.0",
+    "atomate2",
+    "easydict",
+    "einops",
+    "huggingface-hub",
+    "lmdb==1.6.2",
+    "matminer==0.9.3",
+    "numpy",
+    "p-tqdm",
+    "pandas",
+    "pymatgen==2025.6.14",
+    "pytest>=9.1.1",
+    "pyyaml",
+    "scipy==1.16.2",
+    "setuptools==80.9.0",
+    "smact==3.2.0",
+    "torch==2.6.0",
+    "torch-geometric",
+    "torchaudio==2.6.0",
+    "torchvision==0.21.0",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+relaxation = [
+    "mattersim==1.2.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }
+torchaudio = { index = "pytorch-cu124" }
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

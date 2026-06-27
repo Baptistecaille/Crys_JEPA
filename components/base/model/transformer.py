@@ -1,9 +1,16 @@
+"""Transformer decoder used by the base diffusion model.
+
+The MLP stack mixes crystal token features before the DDPM heads predict the
+noise terms for lattice, position, and type channels.
+"""
+
 import torch
 import torch.nn as nn
 import math
 
 class MLP(nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, n_layers=2):
+        """Build a feed-forward block used inside the transformer stack."""
         assert n_layers >= 2
         super(MLP, self).__init__()
         self.map = nn.ModuleList([nn.Linear(in_dim, hidden_dim)])
@@ -14,6 +21,7 @@ class MLP(nn.Module):
         self.n_layers = n_layers
     
     def forward(self, x):
+        """Apply the MLP layers with ReLU activations between hidden blocks."""
         for i in range(self.n_layers-1):
             x = self.act(self.map[i](x))
         x = self.map[-1](x)
@@ -21,6 +29,7 @@ class MLP(nn.Module):
 
 class MHA(nn.Module):
     def __init__(self, attn_head, dim, dropout):
+        """Create a masked multi-head self-attention layer."""
         super(MHA, self).__init__()
         self.dropout = nn.Dropout(dropout)
         self.dim = dim
@@ -29,6 +38,7 @@ class MHA(nn.Module):
         self.WO = nn.Linear(dim, dim)
     
     def forward(self, q, k, v, batch):
+        """Compute attention while respecting the per-structure mask."""
         b, lq, _ = q.shape
         b, kq, _ = k.shape
         b, vq, _ = v.shape
@@ -53,6 +63,7 @@ class MHA(nn.Module):
 
 class Decoder_layer(nn.Module):
     def __init__(self, dim, attn_head, dropout):
+        """Combine masked self-attention and an MLP residual block."""
         assert dim % attn_head == 0
         super(Decoder_layer, self).__init__()
         self.LN_MHA_SA = nn.LayerNorm(dim)
@@ -63,6 +74,7 @@ class Decoder_layer(nn.Module):
         self.MLP = nn.Sequential(nn.Linear(dim, 4*dim), nn.ReLU(), nn.Dropout(dropout), nn.Linear(4*dim, dim))
     
     def forward(self, h, batch):
+        """Run one decoder layer on a padded crystal batch."""
         ## self_attention
         h[~batch] = 0.
         h_ini = h
@@ -79,10 +91,12 @@ class Decoder_layer(nn.Module):
 
 class Sine_PE_t(nn.Module):
     def __init__(self, time_dim):
+        """Create sinusoidal timestep embeddings."""
         super(Sine_PE_t, self).__init__()
         self.div_term = torch.exp(torch.arange(0, time_dim, 2) * -(math.log(10000.0) / time_dim))
     
     def forward(self, t):
+        """Encode diffusion timesteps into sine/cosine features."""
         ## t: b
         pos = torch.einsum("b,l -> bl", t, self.div_term.to(t.device))
         sin_pe, cos_pe = torch.sin(pos), torch.cos(pos)
@@ -90,6 +104,7 @@ class Sine_PE_t(nn.Module):
     
 class Transformer(nn.Module):
     def __init__(self, config):
+        """Build the crystal transformer decoder used by DDPM."""
         super(Transformer, self).__init__()
         input_dim = 100+9
         decoder_layers = config.model.decoder_layers
@@ -108,6 +123,7 @@ class Transformer(nn.Module):
             self.decoder_layers.append(Decoder_layer(hidden_dim, attn_head, dropout))
 
     def forward(self, x, batch, t):
+        """Predict denoising noise for a batch of crystal tokens."""
         b, l, _ = x.shape
         h = self.in_mlp(x)
         t_emb = self.time_emb(t).unsqueeze(1)

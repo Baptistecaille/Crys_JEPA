@@ -1,3 +1,9 @@
+"""Dataset loader for JEPA pretraining.
+
+This module merges the crystal sources used during JEPA training, preprocesses
+the CIF structures, and attaches formation-energy targets.
+"""
+
 import os
 import torch
 from torch.utils.data import Dataset
@@ -11,6 +17,7 @@ import numpy as np
 
 
 def type_coords(coords, atomic_numbers):
+    """Sort atoms deterministically by type and fractional coordinates."""
     atomic_tensor = atomic_numbers.reshape(-1, 1)
     all_tensor = torch.cat([atomic_tensor, coords], -1)
     coe = 1000*all_tensor[:, 0] + 100*all_tensor[:, 1] + 10*all_tensor[:, 2] + 1*all_tensor[:, 3]
@@ -19,15 +26,18 @@ def type_coords(coords, atomic_numbers):
 
 class CrystalDataset(Dataset):
     def __init__(self, config):
+        """Build the combined JEPA pretraining dataset."""
         self.config = config
         self.fetch_datasets()
         self.matrix_scaler = None
         self.offset = torch.cat([torch.tensor([0]), torch.cumsum(self.data["num_atoms"], -1)], 0).long()
 
     def __len__(self) -> int:
+        """Return the number of crystals in the JEPA dataset."""
         return len(self.data['num_atoms'])
 
     def __getitem__(self, index):
+        """Return one JEPA sample with lattice, coordinates, and labels."""
         start, end = self.offset[index], self.offset[index+1]
         matrix, scaled_matrix, num_atoms, ef_per_atom = \
             self.data['matrix'][index], self.data['scaled_matrix'][index], self.data['num_atoms'][index], self.data['ef_per_atom'][index]
@@ -40,12 +50,14 @@ class CrystalDataset(Dataset):
         return frac_coords, scalar_matrix, atomic_numbers, ori_matrix, num_atoms, ef_per_atom
 
     def add_scaled_matrix(self, data):
+        """Scale lattice matrices by atom count before storing them."""
         matrix = data['matrix']
         num_atoms = data['num_atoms'].reshape(-1, 1)
         matrix = matrix / num_atoms.float()**(1/3)
         data['scaled_matrix'] = matrix
 
     def fetch_datasets(self):
+        """Load or build the cached MP2023 and MPTRJ JEPA datasets."""
         data = []
         print("Loading mp2023")
         mp2023_path = os.path.join('data', "jepa", "prepared_mp2023_sub.pt")
@@ -67,6 +79,7 @@ class CrystalDataset(Dataset):
         self.data = {k: torch.cat([one[k] for one in data], 0) for k in data[0].keys() if k!='material_id'}
     
     def read_from_csv(self, path):
+        """Read a CSV source and convert it into cached tensor data."""
         data = pd.read_csv(path, compression="gzip")
         unordered_results = np.array(p_umap(self.cif_info, [data.iloc[idx] for idx in range(len(data))], num_cpus=10))
         order = np.array([result['material_id'] for result in unordered_results]).argsort()
@@ -76,6 +89,7 @@ class CrystalDataset(Dataset):
         return data
 
     def unpack(self, results):
+        """Merge per-structure preprocessing outputs into batched tensors."""
         material_id, frac_coords, atomic_numbers, matrix, ef_per_atom, num_atoms = [], [], [], [], [], []
         for re in results:
             material_id.append(re['material_id'])
@@ -91,6 +105,7 @@ class CrystalDataset(Dataset):
                 'matrix':matrix, 'ef_per_atom': ef_per_atom, 'num_atoms': num_atoms}
     
     def cif_info(self, row):
+        """Extract lattice, coordinates, and energy labels from one row."""
         cif, material_id, ef_per_atom = row['cif'], row["material_id"], row["ef_per_atom"]
         structure = Structure.from_str(cif, fmt='cif')
         structure = structure.get_primitive_structure()
@@ -110,6 +125,7 @@ class CrystalDataset(Dataset):
                 'matrix': sym_matrix, "ef_per_atom": ef_per_atom, 'num_atoms': num_atom}
     
     def compute_lattice_polar_decomposition(self, lattice_matrix: torch.Tensor) -> torch.Tensor:
+        """Convert a lattice matrix to a compact symmetric upper-triangular form."""
         W, S, V_transp = torch.linalg.svd(lattice_matrix)
         S_square = torch.diag_embed(S)
         V = V_transp.transpose(0, 1)

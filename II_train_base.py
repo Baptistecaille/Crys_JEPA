@@ -1,3 +1,9 @@
+"""Distributed training entrypoint for the base DDPM generator.
+
+The script prepares the crystal dataset, runs multi-GPU diffusion training,
+and tracks checkpoints and metrics for the base generation model.
+"""
+
 import os
 import torch
 import torch.distributed as dist
@@ -19,6 +25,7 @@ warnings.filterwarnings('ignore')
 
 
 def collate(batch):
+    """Merge base DDPM samples into the batched tensors expected by training."""
     material_id, matrix, frac_coords, atomic_numbers, num_atoms = zip(*batch)  # unzip list of tuples
     matrix = torch.stack(matrix, 0)
     frac_coords = torch.cat(frac_coords, 0)
@@ -27,6 +34,7 @@ def collate(batch):
     return matrix.float(), frac_coords.float(), atomic_numbers.long(), num_atoms
     
 def train(rank, world_size, args, config):
+    """Run one DDP training worker for the base diffusion model."""
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = args.port
     dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)

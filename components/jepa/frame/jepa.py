@@ -1,3 +1,9 @@
+"""JEPA model wrapper for crystal embeddings.
+
+This frame applies augmentation, encodes two crystal views, and computes the
+loss used to train the JEPA backbone.
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,6 +14,7 @@ from components.jepa.augmentation import rotate, translate
 
 
 def batch_type_coords(coords, atomic_numbers):
+    """Sort atoms deterministically inside each crystal batch element."""
     atomic_tensor = atomic_numbers.unsqueeze(-1)
     all_tensor = torch.cat([atomic_tensor, coords], -1)
     coe = 1000*all_tensor[:, :, 0] + 100*all_tensor[:, :, 1] + 10*all_tensor[:, :, 2] + 1*all_tensor[:, :, 3]
@@ -16,6 +23,7 @@ def batch_type_coords(coords, atomic_numbers):
     
 class JEPA(nn.Module):
     def __init__(self, config, matrix_scaler=None):
+        """Build the JEPA model, predictor, and conditioning projection."""
         super().__init__()
         self.pre_backbone = MLP(109, config.model.hidden_dim, config.model.hidden_dim)
         self.backbone = Transformer(config.model.hidden_dim, config.model.layers, config.model.attn_head, config.model.dropout)
@@ -25,9 +33,11 @@ class JEPA(nn.Module):
         self.matrix_scaler = matrix_scaler
 
     def to_device(self, data):
+        """Move a collated batch onto the configured device."""
         return [i.to(self.device) for i in data]
     
     def encode(self, x, batch):
+        """Encode one crystal view into a CLS embedding."""
         x, mask = to_dense_batch(x, batch)
         mask = torch.cat([torch.BoolTensor([[True]]).to(mask.device).repeat(mask.shape[0], 1), mask], 1) # one more True for cls_token
         x = self.pre_backbone(x)
@@ -36,10 +46,12 @@ class JEPA(nn.Module):
         return cls_out
 
     def cal_weight(self, ef_per_atom):
+        """Convert energy differences into pairwise loss weights."""
         weight = 1. - torch.exp(-torch.abs(ef_per_atom.unsqueeze(0) - ef_per_atom.unsqueeze(1)))
         return weight
     
     def get_loss(self, context, target, ef_per_atom):
+        """Compute the JEPA alignment loss between context and target views."""
         b = context.shape[0]
         
         context_norm = torch.norm(context, dim=-1, keepdim=True)
@@ -57,6 +69,7 @@ class JEPA(nn.Module):
         return -torch.log(sim.diag() + 1e-8).mean()
     
     def forward(self, data):
+        """Train the model on one batch of paired crystal views."""
         frac_coords, matrix, atomic_numbers, ori_matrix, num_atoms, ef_per_atom = self.to_device(data)
         frac_aug, matrix_aug, atomic_numbers_aug, aug_params = self.aug_batch(frac_coords, ori_matrix, atomic_numbers, num_atoms)
         
@@ -75,6 +88,7 @@ class JEPA(nn.Module):
         return loss
 
     def aug_batch(self, frac_coords, ori_matrix, atomic_numbers, num_atoms):
+        """Create an augmented crystal view with random translation and rotation."""
         b = ori_matrix.shape[0]
         batch = torch.repeat_interleave(torch.arange(b).to(self.device), num_atoms)
         
@@ -103,6 +117,7 @@ class JEPA(nn.Module):
         return frac_aug, matrix_aug, atomic_numbers_aug, aug_params
 
     def get_emb(self, data):
+        """Extract frozen crystal embeddings for downstream screening."""
         frac_coords, matrix, atomic_numbers, _, num_atoms, ef_per_atom = self.to_device(data)
         b = matrix.shape[0]
         batch = torch.repeat_interleave(torch.arange(b).to(self.device), num_atoms)

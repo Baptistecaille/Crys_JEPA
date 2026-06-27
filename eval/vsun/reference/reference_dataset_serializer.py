@@ -1,6 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+"""Serialize and deserialize reference datasets backed by LMDB.
+
+The serializer stores computed entries in a compact gzip-compressed database
+format so the benchmark data can be loaded quickly at evaluation time.
+"""
+
 import gzip
 import os
 import shutil
@@ -47,6 +53,7 @@ class LMDBGZSerializer():
     def __init__(
         self,
     ):
+        """Create a serializer for the gzip-compressed LMDB reference format."""
         pass
 
     def serialize(self, ref_dataset: ReferenceDataset, dataset_path: str | os.PathLike) -> None:
@@ -146,6 +153,7 @@ class LMDBBackedReferenceDatasetImpl(ReferenceDatasetImpl):
     def _build_num_entries_by_chemsys_reduced_formulas(
         self, lmdb_path: Path
     ) -> dict[str, dict[str, int]]:
+        """Read the per-chemical-system counts for each reduced formula."""
         chemical_systems = lmdb_read_metadata(lmdb_path, "chemical_systems")
         result: defaultdict[str, dict[str, int]] = defaultdict(dict)
         with self.env.begin() as txn:
@@ -168,14 +176,17 @@ class LMDBBackedReferenceDatasetImpl(ReferenceDatasetImpl):
                 yield from self.get_entries_by_chemsys_reduced_formula(chemsys, reduced_formula)
 
     def __len__(self) -> int:
+        """Return the total number of stored reference entries."""
         return self.total_num_entries
 
     @property
     def chemical_systems(self) -> tuple[str, ...]:
+        """Return the chemical systems present in the LMDB dataset."""
         return tuple(self.num_entries_by_chemsys_reduced_formulas.keys())
 
     @cached_property
     def reduced_formulas(self) -> tuple[str, ...]:
+        """Return all reduced formulas present in the LMDB dataset."""
         return tuple(
             [
                 reduced_formula
@@ -185,18 +196,21 @@ class LMDBBackedReferenceDatasetImpl(ReferenceDatasetImpl):
         )
 
     def get_entries_by_chemsys(self, chemsys: str) -> Iterator[ComputedStructureEntry]:
+        """Yield all entries for one chemical system."""
         for reduced_formula in self.num_entries_by_chemsys_reduced_formulas[chemsys].keys():
             yield from self.get_entries_by_chemsys_reduced_formula(chemsys, reduced_formula)
 
     def get_entries_by_reduced_formula(
         self, reduced_formula: str
     ) -> Iterator[ComputedStructureEntry]:
+        """Yield all entries for one reduced formula."""
         chemsys = Composition(reduced_formula).chemical_system
         yield from self.get_entries_by_chemsys_reduced_formula(chemsys, reduced_formula)
 
     def get_entries_by_chemsys_reduced_formula(
         self, chemsys: str, reduced_formula: str
     ) -> Iterator[ComputedStructureEntry]:
+        """Yield all entries for a chemical-system and reduced-formula pair."""
         length = self.num_entries_by_chemsys_reduced_formulas[chemsys][reduced_formula]
         for i in range(length):
             with self.env.begin() as txn:

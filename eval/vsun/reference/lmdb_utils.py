@@ -1,6 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+"""Low-level LMDB helpers for packed reference datasets.
+
+This layer opens the database, wraps iterators, and provides the storage
+primitives used by the reference dataset serializer.
+"""
+
 import bisect
 import os
 import pickle
@@ -17,6 +23,7 @@ DataPoint = TypeVar("DataPoint")
 
 
 def lmdb_open(db_path: str | os.PathLike, readonly: bool = False) -> lmdb.Environment:
+    """Open an LMDB environment in read-only or writable mode."""
     if readonly:
         return lmdb.open(
             str(db_path),
@@ -38,6 +45,7 @@ def lmdb_open(db_path: str | os.PathLike, readonly: bool = False) -> lmdb.Enviro
 
 
 def lmdb_read_metadata(db_path: str | os.PathLike, key: str, default=None) -> Any:
+    """Read one metadata value from an LMDB database path."""
     with lmdb_open(db_path, readonly=True) as db:
         with db.begin() as txn:
             result = lmdb_get(txn, key, default=default)
@@ -63,6 +71,7 @@ def lmdb_put(txn: lmdb.Transaction, key: str, value: Any) -> bool:
 
 
 class LmdbNotFoundError(Exception):
+    """Raised when an expected LMDB key is missing."""
     pass
 
 
@@ -107,6 +116,7 @@ def get_length(env: lmdb.Environment) -> int:
 
 
 def list_db_paths(data_dir: str | os.PathLike) -> list[Path]:
+    """List LMDB database paths in a directory."""
     return sorted(Path(data_dir).glob("*.lmdb"))
 
 
@@ -141,6 +151,7 @@ class Metadata(Generic[DataPoint]):
 
     @classmethod
     def from_value(cls, value):
+        """Recreate a metadata object from a stored value."""
         return cls(value)
 
     @property
@@ -150,6 +161,7 @@ class Metadata(Generic[DataPoint]):
 
     @property
     def is_frozen(self):
+        """Return whether the metadata is immutable after creation."""
         return False
 
     @property
@@ -225,6 +237,7 @@ def check_and_init_metadata(
     return_all: bool = True,
     verbose: bool = False,
 ) -> list[Metadata]:
+    """Load existing metadata or initialize it for a fresh database."""
     new_metadata = []
     for meta in metadata:
         with db.begin() as txn:
@@ -249,6 +262,7 @@ def check_and_init_metadata(
 
 
 def check_and_put_metadata(db: lmdb.Environment, metadata: list[Metadata], length: int):
+    """Validate and store metadata records in the database."""
     for meta in metadata:
         meta.check(length)
         with db.begin(write=True) as txn:

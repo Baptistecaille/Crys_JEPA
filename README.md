@@ -15,26 +15,32 @@ This is the official implement of paper [Crys-JEPA: Accelerating Crystal Discove
 }
 ```
 
-## Python environment setup with Conda
+## Python environment setup with uv
 ```
-conda create -n crys_jepa python=3.12.0
-conda activate crys_jepa
-conda install -c conda-forge mattersim==1.2.0
-conda install -c conda-forge pymatgen=2025.6.14 ase=3.25.0 matminer=0.9.3
-pip install --no-cache-dir --force-reinstall torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
-pip install torch_scatter -f https://data.pyg.org/whl/torch-2.6.0+cu124.html
-pip install p_tqdm lmdb easydict einops atomate2
-pip install setuptools==80.9.0 lmdb==1.6.2 scipy==1.16.2 smact==3.2.0
-
 git clone https://github.com/liun-online/Crys_JEPA.git
 cd Crys_JEPA/
+
+uv sync
+uv pip install torch_scatter -f https://data.pyg.org/whl/torch-2.6.0+cu124.html
 ```
+
+The project uses Python 3.12 and installs the PyTorch 2.6.0 CUDA 12.4 wheels via `pyproject.toml`.
+If you need CPU-only PyTorch, remove the `pytorch-cu124` entries from `pyproject.toml` and run
+`uv sync` again.
+
+MatterSim is only needed for the relaxation step (`IV_relax.py`) and is optional:
+```
+uv sync --extra relaxation
+```
+
+On Windows, MatterSim 1.2.0 does not publish a prebuilt wheel, so `uv` must compile it from source.
+Install Microsoft C++ Build Tools first, or run the relaxation step from Linux/WSL where MatterSim
+provides a wheel.
 
 ## Download and Reproduce
 Firstly, install [Hugging Face](https://huggingface.co/) and login
 ```
-pip install -U huggingface_hub
-hf auth login
+uv run hf auth login
 ```
 Then, download the folders, i.e., `./data`, `./ref_dataset`, and `exp_logs.zip` by running the following commands:
 ```
@@ -55,12 +61,12 @@ mv exp_finetune finetune
 cd ..
 
 ## MP-20
-python VII_final_gen.py
-python VIII_final_eval.py
+uv run python VII_final_gen.py
+uv run python VIII_final_eval.py
 
 ## Alex-MP-20
-python VII_final_gen.py --dataset alex_mp_20
-python VIII_final_eval.py --dataset alex_mp_20
+uv run python VII_final_gen.py --dataset alex_mp_20
+uv run python VIII_final_eval.py --dataset alex_mp_20
 
 ## [Optional] Run the commands below to prevent name clashes when starting a new training run
 mv logs exp_logs
@@ -75,25 +81,115 @@ Remarks
 ## Training Pipeline
 ### a. Train JEPA and base generative model
 ```
-python I_train_jepa.py
-python II_train_base.py
+uv run python I_train_jepa.py
+uv run python II_train_base.py
 ```
 
 ### b. Use base model to generate candidates, relax and screen
 ```
-python III_base_gen.py
-python IV_relax.py
-python V_screen.py
+uv run python III_base_gen.py
+uv sync --extra relaxation
+uv run python IV_relax.py
+uv run python V_screen.py
 ```
 
 ### c. Fine-tune the base model, and evaluate
 ```
-python VI_ft_base.py
-python VII_final_gen.py
-python VIII_final_eval.py
+uv run python VI_ft_base.py
+uv run python VII_final_gen.py
+uv run python VIII_final_eval.py
 ```
 Remarks
 > 1. Add `--dataset alex_mp_20` behind commands `II ~ VIII` to use Alex-MP-20 dataset.
-> 2. Change hyper-parameters, e.g., ```python II_train_base.py --conf_new training.batch_size=256 training.lr=0.0001```.
-> 3. Use partial of GPUs, e.g., ```CUDA_VISIBLE_DEVICES=0,1 II_train_base.py```. Default: use all GPUs.
+> 2. Change hyper-parameters, e.g., ```uv run python II_train_base.py --conf_new training.batch_size=256 training.lr=0.0001```.
+> 3. Use partial of GPUs, e.g., ```CUDA_VISIBLE_DEVICES=0,1 uv run python II_train_base.py```. Default: use all GPUs.
 > 4. The evaluation code is mainly adapted from [MatterGen](https://github.com/microsoft/mattergen) and [FlowMM](https://github.com/facebookresearch/flowmm).
+
+## 3DSC Superconductivity MVP
+
+This repository now includes a supervised prototype for testing whether frozen Crys-JEPA crystal embeddings are useful for superconductivity prediction on 3DSC/3DSCMP.
+
+### Goal
+
+The MVP maps a CIF crystal structure to `C = (X, A, L)`, encodes it with a frozen Crys-JEPA-compatible encoder, and trains supervised MLP heads for:
+
+- binary superconductivity classification, using `label_supra = 1` when `Tc > 0` and `0` when `Tc = 0`;
+- critical-temperature regression in Kelvin;
+- optional Tc uncertainty through a positive Softplus head.
+
+The code is designed so the encoder can be swapped: set `model.crys_jepa_checkpoint` in `configs/default.yaml` to use a pretrained Crys-JEPA checkpoint, or leave it null to use `PlaceholderCrysJEPAEncoder` for pipeline tests.
+
+### Dataset Layout
+
+Place the 3DSC metadata and CIF files like this:
+
+```text
+data/raw/3DSC_MP.csv
+data/raw/cifs/*.cif
+```
+
+The CSV must contain at least:
+
+- `formula`
+- `Tc`
+- `cif_path`
+
+Optional Materials Project or DFT columns can be kept in the CSV for later extensions. The current MVP ignores them unless new heads/features are added.
+
+### Training
+
+```bash
+python scripts/train_mvp.py --config configs/default.yaml
+```
+
+The best checkpoint is saved to `checkpoints/best.pt` by default, selected by validation MAE on Tc.
+
+### Evaluation
+
+```bash
+python scripts/evaluate_mvp.py --config configs/default.yaml --checkpoint checkpoints/best.pt --predictions-csv predictions.csv
+```
+
+Evaluation reports classification metrics, Tc MAE/RMSE, MAE on superconductors only, MAE on high-Tc materials above 77 K, and a binary confusion matrix.
+
+### CIF Inference
+
+```bash
+python scripts/infer_cif.py --checkpoint checkpoints/best.pt --cif path/to/material.cif
+```
+
+Example output:
+
+```text
+Material: YBa2Cu3O7
+P(superconductor): 0.8421
+Predicted Tc: 86.30 K
+Uncertainty: 7.40 K
+```
+
+### Main Files
+
+- `src/datasets/threedsc_dataset.py`: 3DSC CSV/CIF dataset, labels, reproducible splits, and padding collate function.
+- `src/models/crys_jepa_wrapper.py`: pretrained Crys-JEPA adapter plus placeholder encoder.
+- `src/models/superconductivity_heads.py`: classifier, Tc regressor, and optional uncertainty head.
+- `src/training/train.py`: training loop and best-checkpoint saving.
+- `src/training/evaluate.py`: prediction collection and metrics.
+- `src/infer.py`: single-CIF inference.
+
+### Current Scientific Limits
+
+- `Tc = 0` rows are used as negatives for the MVP, but they may mean "not known to superconduct" rather than experimentally confirmed non-superconductors.
+- 3DSC structures can be approximate and may not capture pressure, doping, disorder, or synthesis conditions.
+- The default MVP freezes Crys-JEPA and trains only supervised heads.
+- DFT features such as `band_gap`, `energy_above_hull`, `fermi_energy`, and magnetization are reserved for later integration.
+- Real discovery workflows still need stability, synthesizability, and energy-above-hull filtering.
+
+### Planned Extensions
+
+1. Partial Crys-JEPA fine-tuning.
+2. Pressure and doping inputs.
+3. DFT feature fusion.
+4. Ensemble uncertainty.
+5. Materials Project candidate screening.
+6. Energy-above-hull filtering.
+7. High-Tc-oriented objectives instead of plain classification.

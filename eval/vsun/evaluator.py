@@ -1,3 +1,9 @@
+"""Compute VSUN metrics for generated crystals.
+
+This module compares generated structures against the packaged reference set
+to derive uniqueness and novelty indicators used in the final evaluation.
+"""
+
 import os
 import pandas as pd
 import numpy as np
@@ -12,6 +18,7 @@ from eval.vsun.utils import get_unique, get_matches, get_mask_from_local_index, 
 
 class Evaluator:
     def __init__(self, args, gen_ref, reference):
+        """Bind the generated dataset, reference dataset, and evaluation settings."""
         self.args = args
         self.gen_ref = gen_ref
         self.reference = reference
@@ -20,6 +27,7 @@ class Evaluator:
         self.matcher = StructureMatcher()
     
     def get_stability(self, df, e_hull_path):
+        """Compute or load the stability mask based on energy above hull."""
         if not os.path.exists(e_hull_path):
             result = np.zeros(len(self.gen_ref))
             for chemsys, entries in tqdm(
@@ -79,6 +87,7 @@ class Evaluator:
             return None
     
     def get_uniqueness(self):
+        """Return the mask of structures that are unique within each formula group."""
         local_index: dict[str, List[int]] = {}
         for reduced_formula, data_entries in tqdm(
             self.gen_ref.entries_by_reduced_formula.items(),
@@ -94,6 +103,7 @@ class Evaluator:
         return self.u_indicator
     
     def get_novelty(self):
+        """Return the mask of structures that do not match the reference set."""
         local_match_indices: dict[str, dict[int, list[int]]] = {}
         grouped_dataset_entries = self.gen_ref.entries_by_reduced_formula
         grouped_reference_entries = self.reference.entries_by_reduced_formula

@@ -1,3 +1,9 @@
+"""Shared helpers for VSUN evaluation and structure post-processing.
+
+These functions normalize structures, fill derived dataframe columns, and
+build the masks used to compare generated crystals against references.
+"""
+
 from pymatgen.core import Structure, Composition, Species, Element, DummySpecies
 from pymatgen.core.structure import Structure
 from pymatgen.analysis.structure_matcher import StructureMatcher
@@ -8,6 +14,7 @@ import numpy as np
 from collections import defaultdict
 
 def to_structure(structure: Structure | dict | str) -> Structure:
+    """Normalize a structure-like object into a pymatgen Structure."""
     if isinstance(structure, dict):
         return Structure.from_dict(structure)
     elif isinstance(structure, str):
@@ -16,6 +23,7 @@ def to_structure(structure: Structure | dict | str) -> Structure:
         return structure
 
 def maybe_get_missing_columns(df, maps) -> pd.DataFrame:
+    """Populate derived dataframe columns only when they are missing."""
     for name, mapping in maps.items():
         if name not in df.columns:
             df[name] = mapping(df)
@@ -30,6 +38,7 @@ COLUMNS_COMPUTATIONS = {
 def get_composition(
     structure: Structure | dict,
 ) -> Composition:
+    """Return the pymatgen Composition for a structure or serialized dict."""
     if structure == {}:
         return Composition()
     return to_structure(structure).composition
@@ -37,11 +46,13 @@ def get_composition(
 def get_composition_dict(
     structure: Structure | dict,
 ) -> dict[str, float]:
+    """Return the composition as a plain dictionary."""
     return get_composition(structure).as_dict()
 
 def get_chemsys(
     composition: Composition | dict,
 ) -> set[Element | Species | DummySpecies] | None:
+    """Return the chemical system as a set of element names."""
     elements = list(elt.name for elt in to_composition(composition).elements)
     return set(elements)
 
@@ -49,10 +60,12 @@ def get_chemsys(
 def get_nary(
     chemsys: set[Element, Species, DummySpecies] | list[Element, Species, DummySpecies]
 ) -> int:
+    """Count the number of unique elements in a chemical system."""
     return len(set(chemsys))
 
 
 def to_composition(composition: Composition | dict) -> Composition:
+    """Normalize a composition-like object into a pymatgen Composition."""
     if isinstance(composition, dict):
         return Composition.from_dict(composition)
     else:
@@ -68,6 +81,7 @@ def filter_prerelaxed(
     maximum_nary: int | None = None,
     minimum_nary: int = 0, # 1
 ) -> pd.DataFrame:
+    """Filter pre-relaxation results before the VSUN comparison stage."""
     if filter_exceptions:
         df = df[df["exception"] == False]
 
@@ -85,6 +99,7 @@ def filter_prerelaxed(
 
 
 def get_unique(structure_matcher: StructureMatcher, structures: List[Structure]) -> List[int]:
+    """Return the indices of structures that are unique under matching."""
     if len(structures) == 1:
         return [0]
     unique_structures: list[Structure] = []
@@ -126,6 +141,7 @@ def get_global_match_dict_from_local_dict(
     reference_entries_mapping_by_key: Mapping[str, list[ComputedStructureEntry]],
     local_index: Mapping[str, dict[int, list[int]]],
 ) -> dict[int, list[str]]:
+    """Convert local match indices into a global material-id mapping."""
     global_match_dict = {}
     for k, match_dict in local_index.items():
         if len(match_dict) == 0 or max(len(v) for v in match_dict.values()) == 0:
@@ -142,18 +158,7 @@ def get_global_match_dict_from_local_dict(
 def get_matches(
     structure_matcher: StructureMatcher, d1: List[Structure], d2: List[Structure],
 ) -> dict[int, list[int]]:
-    """
-    Iterates d1 to find matches in d2.
-
-    Args:
-        structure_matcher: StructureMatcher to use for comparison.
-        d1: List of structures to compare.
-        d2: List of structures to compare against.
-
-    Returns:
-        matches: Dictionary of matches. Key is the index of the structure in d1 and value is the index of the structure in d2.
-
-    """
+    """Find all pairwise structure matches from d1 into d2."""
     matches: dict[int, list[int]] = defaultdict(list)
 
     for i in range(len(d1)):
@@ -163,17 +168,7 @@ def get_matches(
     return matches
 
 def matches_to_mask(match_idx: Iterable[int], num_samples: int) -> np.typing.NDArray[bool]:
-    """
-    Convert matches to a boolean mask.
-
-    Args:
-        match_idx: List of indices of the structures from the input dataset which have a match
-            in the reference dataset.
-        num_samples: Number of structures in the input dataset.
-
-    Returns:
-        mask: Boolean mask of length num_samples. True if the structure has a match, False if not.
-    """
+    """Convert matched indices into a boolean mask of length num_samples."""
     mask = np.zeros(num_samples, dtype=bool)
     mask[list(match_idx)] = True
     return mask

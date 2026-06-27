@@ -1,3 +1,9 @@
+"""Evaluate the final generated batches with VSUN metrics.
+
+The script relaxes the finetune generations, converts them to reference
+entries, and computes the final uniqueness/novelty summary for each dataset.
+"""
+
 import argparse
 import torch
 import pandas as pd

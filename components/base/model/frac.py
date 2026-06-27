@@ -1,3 +1,9 @@
+"""Diffusion utilities for fractional-coordinate features.
+
+This module mirrors the lattice diffusion helpers for fractional positions
+so the base DDPM can denoise atom coordinates consistently.
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,16 +12,19 @@ import math
 
 class frac_noise(nn.Module):
     def __init__(self, T):
+        """Create the fractional-coordinate diffusion schedule."""
         super(frac_noise, self).__init__()
         self.cosine_schedule(T)
     
     def forward(self, t, frac):
+        """Diffuse fractional coordinates forward to timestep t."""
         device = frac.device
         noise = self.gaussian(frac.shape, device)
         frac_t = self.sqrt_alphas_cumprod.to(device)[t] * frac + self.sqrt_one_minus_alphas_cumprod.to(device)[t] * noise
         return frac_t, noise
     
     def reverse(self, t, noisy_frac, pred_noise):
+        """Sample denoised fractional coordinates from the reverse process."""
         device = noisy_frac.device
         mu_t = self.mu_coe_1.to(device)[t] * (noisy_frac - self.mu_coe_2.to(device)[t] * pred_noise)
         log_var_t = self.log_beta_coe.to(device)[t]
@@ -23,17 +32,16 @@ class frac_noise(nn.Module):
         return noisy_frac
     
     def cal_loss(self, pred, true):
+        """Compute the coordinate reconstruction loss."""
         return F.mse_loss(pred, true)
     
     def gaussian(self, shape, device):
+        """Draw Gaussian noise for fractional coordinates."""
         noise = torch.randn(shape).to(device)
         return noise
 
     def cosine_schedule(self, timesteps, s=0.008):
-        """
-        cosine schedule
-        as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
-        """
+        """Build the cosine diffusion schedule used by the DDPM updates."""
         steps = timesteps + 1
         x = torch.linspace(0, timesteps, steps, dtype = torch.float32)
         alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * math.pi * 0.5) ** 2

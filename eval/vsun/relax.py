@@ -1,6 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+"""Relax generated structures with MatterSim or ASE backends.
+
+The functions in this module convert pymatgen structures into relaxable
+inputs, run the optimizer, and return the relaxed energies and geometries.
+"""
+
 import numpy as np
 from ase import Atoms
 
@@ -24,6 +30,7 @@ import pandas as pd
 
 class RelaxationData:
     def __init__(self):
+        """Collect relaxation results for a batch of structures."""
         self.index = []
         self.e_relax = []
         self.num_sites = []
@@ -32,18 +39,23 @@ class RelaxationData:
 
 class DummyBatchCalculator(Calculator):
     def __init__(self):
+        """Create a lightweight calculator that reuses stored predictions."""
         super().__init__()
 
     def calculate(self, atoms=None, properties=None, system_changes=None):
+        """No-op because the batch relaxer injects energies and forces directly."""
         pass
 
     def get_potential_energy(self, atoms=None):
+        """Return the cached total energy for the current structure."""
         return atoms.info["total_energy"]
 
     def get_forces(self, atoms=None):
+        """Return the cached atomic forces for the current structure."""
         return atoms.arrays["forces"]
 
     def get_stress(self, atoms=None):
+        """Return the cached stress tensor in ASE units."""
         return units.GPa * atoms.info["stress"]
 
 class BatchRelaxer(object):
@@ -85,6 +97,7 @@ class BatchRelaxer(object):
         self.step = step
 
     def insert(self, atoms: Atoms):
+        """Add one structure to the active relaxation queue."""
         atoms.set_calculator(DummyBatchCalculator())
         optimizer_instance = self.optimizer(
             self.filter(atoms) if self.filter else atoms
@@ -94,6 +107,7 @@ class BatchRelaxer(object):
         self.is_active_instance.append(True)
 
     def mattersim_pred(self, atoms_list):
+        """Predict energies, forces, and stresses for a batch of atoms."""
         dataloader = build_dataloader(
             atoms_list, batch_size=len(atoms_list), only_inference=True
         )
@@ -103,6 +117,7 @@ class BatchRelaxer(object):
         return energy_batch, forces_batch, stress_batch
     
     def step_batch(self):
+        """Advance all active optimizers by one relaxation step."""
         atoms_list = []
         for idx, opt in enumerate(self.optimizer_instances):
             if self.is_active_instance[idx]:
@@ -154,6 +169,7 @@ class BatchRelaxer(object):
         self,
         atoms_list: List[Atoms],
     ) -> Dict[int, List[Atoms]]:
+        """Relax a list of atoms objects and return their optimization traces."""
         self.trajectories = {}
         self.tqdmcounter = tqdm(total=len(atoms_list), file=sys.stdout)
         pointer = 0
@@ -186,6 +202,7 @@ class BatchRelaxer(object):
 def relax_atoms(
     atoms: list[Atoms], device: str, mlff: str, step: int, **kwargs
 ) -> tuple[list[Atoms], np.ndarray]:
+    """Relax a list of ASE atoms objects with the selected force field."""
     if mlff == "mattersim":
         potential = Potential.from_checkpoint(
             device=device, load_path="MatterSim-v1.0.0-1M.pth", load_training_state=False
@@ -204,6 +221,7 @@ def relax_structures(
     mlff: str,
     **kwargs
 ) -> tuple[list[Structure], np.ndarray]:
+    """Convert pymatgen structures to ASE, relax them, and pack the results."""
     if isinstance(structures, Structure):
         structures = [structures]
     atoms = [AseAtomsAdaptor.get_atoms(structures[i]) for i in range(len(structures))]

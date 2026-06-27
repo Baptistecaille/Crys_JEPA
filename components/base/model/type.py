@@ -1,3 +1,9 @@
+"""Diffusion utilities for atom-type one-hot features.
+
+This module provides the discrete-type noise schedule and reverse updates
+used by the base DDPM to denoise crystal species assignments.
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,16 +12,19 @@ import math
 
 class type_noise(nn.Module):
     def __init__(self, T):
+        """Create the atom-type diffusion schedule."""
         super(type_noise, self).__init__()
         self.cosine_schedule(T)
     
     def forward(self, t, type):
+        """Diffuse atom-type one-hot vectors forward to timestep t."""
         device = type.device
         noise = self.gaussian(type.shape, device)
         type_t = self.sqrt_alphas_cumprod.to(device)[t] * type + self.sqrt_one_minus_alphas_cumprod.to(device)[t] * noise
         return type_t, noise
     
     def reverse(self, t, noisy_type, pred_noise):
+        """Sample denoised atom types from the reverse process."""
         device = noisy_type.device
         mu_t = self.mu_coe_1.to(device)[t] * (noisy_type - self.mu_coe_2.to(device)[t] * pred_noise)
         log_var_t = self.log_beta_coe.to(device)[t]
@@ -23,17 +32,16 @@ class type_noise(nn.Module):
         return noisy_type
     
     def cal_loss(self, pred, true):
+        """Compute the atom-type reconstruction loss."""
         return F.mse_loss(pred, true)
     
     def gaussian(self, shape, device):
+        """Draw Gaussian noise for atom types."""
         noise = torch.randn(shape).to(device)
         return noise
 
     def cosine_schedule(self, timesteps, s=0.008):
-        """
-        cosine schedule
-        as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
-        """
+        """Build the cosine diffusion schedule used by the DDPM updates."""
         steps = timesteps + 1
         x = torch.linspace(0, timesteps, steps, dtype = torch.float32)
         alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * math.pi * 0.5) ** 2

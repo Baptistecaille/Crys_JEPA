@@ -1,16 +1,20 @@
+"""Geometric augmentation helpers used by JEPA.
+
+The functions here apply random translations and rotations so the JEPA model
+sees multiple crystal views during contrastive training.
+"""
+
 import torch
 
 def translate(frac, b, batch):
+    """Translate each crystal in the batch by a random fractional offset."""
     device = frac.device
     vec_t = torch.rand(b, 3).to(device)
     frac_trans = (frac + vec_t[batch]) % 1.
     return frac_trans, vec_t
 
 def _random_rotation_matrix_so3(batch=1):
-    """
-    Uniform random rotation matrix (SO(3)) using random unit quaternions.
-    Returns: (3,3) if batch=1 else (B,3,3)
-    """
+    """Sample a random rotation matrix from SO(3) using quaternions."""
     u1 = torch.rand(batch)
     u2 = torch.rand(batch)
     u3 = torch.rand(batch)
@@ -39,6 +43,7 @@ def _random_rotation_matrix_so3(batch=1):
     return R[0] if batch == 1 else R, torch.stack([u1, u2, u3], -1)
 
 def rotate(lattice, b):
+    """Rotate each lattice in the batch with an independent random SO(3) matrix."""
     R, vec_r = _random_rotation_matrix_so3(b)
     Rt = R.transpose(-1, -2).to(lattice.device)
     lat_rot = lattice @ Rt

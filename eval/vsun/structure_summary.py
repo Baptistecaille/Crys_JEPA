@@ -1,6 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+"""Build summary entries from relaxed structures and energies.
+
+This module turns relaxed outputs into computed entries compatible with the
+Materials Project correction scheme used by the VSUN evaluation pipeline.
+"""
+
 from dataclasses import dataclass, field
 from functools import cached_property
 import re
@@ -26,6 +32,7 @@ class IdentityCorrectionScheme(Compatibility):
     def get_adjustments(
         self, entry: ComputedEntry | ComputedStructureEntry
     ) -> list[EnergyAdjustment]:
+        """Return no corrections for the supplied entry."""
         return []
 
 
@@ -40,12 +47,14 @@ class VasprunLike:
     def __init__(
         self, structure: Structure, energy: float, user_potcar_functional: str = "PBE"
     ) -> None:
+        """Store the structure and energy needed to mimic a VASP run."""
         self.structure = structure
         self.energy = energy
         self.user_potcar_functional = user_potcar_functional
 
     @cached_property
     def mp_set(self) -> MPRelaxSet:
+        """Build the MPRelaxSet used to infer VASP-style metadata."""
         return MPRelaxSet(
             self.structure,
             # These settings prevent the MPRelaxSet from trying to
@@ -57,6 +66,7 @@ class VasprunLike:
 
     @property
     def potcar_symbols(self) -> list[str]:
+        """Return the POTCAR symbols implied by the stored structure."""
         try:
             return [
                 f"{self.user_potcar_functional.upper()} {sym}" for sym in self.mp_set.potcar_symbols
@@ -66,13 +76,12 @@ class VasprunLike:
 
     @property
     def aspherical(self) -> bool:
+        """Report whether the run uses aspherical corrections."""
         return self.mp_set.incar.get("LASPH", False)
 
     @property
     def hubbards(self) -> dict:
-        """
-        Hubbard U values used if a vasprun is a GGA+U run. {} otherwise.
-        """
+        """Return the Hubbard-U values inferred from the relaxed structure."""
         try:
             symbols = [s.split()[1] for s in self.potcar_symbols]
         except:
@@ -92,9 +101,7 @@ class VasprunLike:
 
     @property
     def run_type(self) -> str:
-        """
-        Returns the run type. Simplified version of https://github.com/materialsproject/pymatgen/blob/6c23d744efbd892ec48346297d61b4f3f86b1478/pymatgen/io/vasp/outputs.py#L716.
-        """
+        """Return the VASP run type implied by the inferred Hubbard settings."""
 
         rt = "GGA"
         if self.is_hubbard:
@@ -104,9 +111,7 @@ class VasprunLike:
 
     @property
     def is_hubbard(self) -> bool:
-        """
-        True if run is a DFT+U run.
-        """
+        """Return True when the structure corresponds to a DFT+U run."""
         if len(self.hubbards) == 0:
             return False
         return sum(self.hubbards.values()) > 1e-8
@@ -116,6 +121,7 @@ class VasprunLike:
         inc_structure: bool = True,
         energy_correction_scheme: Compatibility = IdentityCorrectionScheme(),
     ) -> ComputedEntry:
+        """Build a ComputedEntry or ComputedStructureEntry with corrections applied."""
         entry_dict = {
             "correction": 0.0,
             "composition": self.structure.composition,
@@ -151,10 +157,7 @@ class MetricsStructureSummary:
         properties: dict[str, float] | None = None,
         energy_correction_scheme: Compatibility = MaterialsProject2020Compatibility(),
     ) -> "MetricsStructureSummary":
-        """
-        Instantiates a MetricsStructureSummary from a JobStoreTaskDoc.
-        Useful for computing DFT-based metrics (or any compatible MLFF).
-        """
+        """Create a summary entry from a relaxed structure and its energy."""
         vasprun_like = VasprunLike(structure=structure, energy=energy)
         entry = vasprun_like.get_computed_entry(
             inc_structure=True, energy_correction_scheme=energy_correction_scheme
@@ -167,10 +170,12 @@ class MetricsStructureSummary:
 
     @property
     def structure(self) -> Structure:
+        """Return the relaxed structure stored in the summary."""
         return self.entry.structure
 
     @property
     def chemical_system(self) -> str:
+        """Return the chemical system string for the summary entry."""
         return self.entry.composition.chemical_system
 
 
@@ -179,7 +184,7 @@ def get_metrics_structure_summaries(
     energies: list[float],
     energy_correction_scheme: Compatibility = MaterialsProject2020Compatibility(),
 ) -> list[MetricsStructureSummary]:
-    
+    """Convert parallel lists of structures and energies into summaries."""
     return [
         MetricsStructureSummary.from_structure_and_energy(
             structure=structures[i],

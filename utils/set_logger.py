@@ -1,3 +1,9 @@
+"""Logger factory used by training and evaluation entrypoints.
+
+It configures a lightweight console/file logger pair so each stage can write
+structured progress messages into its own experiment directory.
+"""
+
 import logging
 
 def get_logger(level=logging.INFO, path='log.log') -> logging.Logger:

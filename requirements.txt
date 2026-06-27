@@ -1,0 +1,13 @@
+torch==2.6.0
+torch-geometric
+torchaudio==2.6.0
+torchvision==0.21.0
+pandas
+numpy
+pymatgen==2025.6.14
+pyyaml
+easydict
+tqdm
+ase==3.25.0
+p-tqdm
+scipy==1.16.2

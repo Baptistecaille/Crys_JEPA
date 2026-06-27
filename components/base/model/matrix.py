@@ -1,3 +1,9 @@
+"""Diffusion utilities for lattice-matrix features.
+
+This module defines the noise schedule and reverse denoising steps for the
+crystal lattice representation used by the base DDPM.
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,16 +12,19 @@ import math
 
 class matrix_noise(nn.Module):
     def __init__(self, T):
+        """Create the lattice diffusion schedule for a given timestep count."""
         super(matrix_noise, self).__init__()
         self.cosine_schedule(T)
     
     def forward(self, t, matrix):
+        """Diffuse lattice vectors forward to timestep t."""
         device = matrix.device
         noise = self.gaussian(matrix.shape, device)
         matrix_t = self.sqrt_alphas_cumprod.to(device)[t] * matrix + self.sqrt_one_minus_alphas_cumprod.to(device)[t] * noise
         return matrix_t, noise
     
     def reverse(self, t, noisy_matrix, pred_noise):
+        """Sample a denoised lattice vector from the reverse process."""
         device = noisy_matrix.device
         mu_t = self.mu_coe_1.to(device)[t] * (noisy_matrix - self.mu_coe_2.to(device)[t] * pred_noise)
         log_var_t = self.log_beta_coe.to(device)[t]
@@ -23,17 +32,16 @@ class matrix_noise(nn.Module):
         return noisy_matrix
 
     def cal_loss(self, pred, true):
+        """Compute the lattice reconstruction loss."""
         return F.mse_loss(pred, true)
     
     def gaussian(self, shape, device):
+        """Draw standard Gaussian noise with the requested shape."""
         noise = torch.randn(shape)
         return noise.to(device)
 
     def cosine_schedule(self, timesteps, s=0.008):
-        """
-        cosine schedule
-        as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
-        """
+        """Build the cosine diffusion schedule used by the DDPM updates."""
         steps = timesteps + 1
         x = torch.linspace(0, timesteps, steps, dtype = torch.float32)
         alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * math.pi * 0.5) ** 2

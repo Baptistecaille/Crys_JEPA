@@ -1,3 +1,9 @@
+"""Worker process for relaxing generated crystal candidates.
+
+This helper is launched from the generation pipeline to convert tensors into
+structures, validate them, and relax them with the configured ML force field.
+"""
+
 import argparse
 import torch
 import numpy as np
@@ -8,6 +14,7 @@ from eval.vsun.relax import relax_structures
 
 
 def main():
+    """Convert one generated batch to structures, relax it, and save results."""
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--gen_path", type=str, required=True)
