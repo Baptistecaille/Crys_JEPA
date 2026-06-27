@@ -1,11 +1,14 @@
 from pathlib import Path
 from typing import Sequence
 
+import numpy as np
+
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, Subset
 
 from src.utils.cif_utils import load_cif_tensors
+from src.utils.dft_features import DFTFeatureScaler
 
 
 class ThreeDSCDataset(Dataset):
@@ -19,6 +22,8 @@ class ThreeDSCDataset(Dataset):
         tc_column: str = "Tc",
         cif_column: str = "cif_path",
         csv_comment: str | None = None,
+        dft_feature_columns: Sequence[str] | None = None,
+        dft_scaler: DFTFeatureScaler | None = None,
         primitive: bool = False,
         reduced: bool = False,
     ) -> None:
@@ -28,6 +33,8 @@ class ThreeDSCDataset(Dataset):
         self.tc_column = tc_column
         self.cif_column = cif_column
         self.csv_comment = csv_comment
+        self.dft_feature_columns = list(dft_feature_columns or [])
+        self.dft_scaler = dft_scaler
         self.primitive = primitive
         self.reduced = reduced
         self.rows = pd.read_csv(self.csv_path, comment=self.csv_comment)
@@ -36,7 +43,7 @@ class ThreeDSCDataset(Dataset):
     def _validate_columns(self) -> None:
         missing = [
             column
-            for column in (self.tc_column, self.cif_column)
+            for column in (self.tc_column, self.cif_column, *self.dft_feature_columns)
             if column not in self.rows.columns
         ]
         if missing:
@@ -52,7 +59,7 @@ class ThreeDSCDataset(Dataset):
         tensors = load_cif_tensors(cif_path, primitive=self.primitive, reduced=self.reduced)
         formula = str(row[self.formula_column]) if self.formula_column in row else tensors["formula_from_cif"]
 
-        return {
+        sample = {
             "X": tensors["X"],
             "A": tensors["A"],
             "L": tensors["L"],
@@ -61,6 +68,27 @@ class ThreeDSCDataset(Dataset):
             "formula": formula,
             "cif_path": str(cif_path),
         }
+        if self.dft_feature_columns:
+            raw_dft = self._row_dft_features(row)
+            sample["dft_features_raw"] = raw_dft
+            sample["dft_features"] = self.dft_scaler.transform(raw_dft) if self.dft_scaler else raw_dft
+        return sample
+
+    def set_dft_scaler(self, scaler: DFTFeatureScaler) -> None:
+        """Attach train-fitted DFT scaling statistics to the dataset."""
+        self.dft_scaler = scaler
+
+    def raw_dft_matrix(self) -> torch.Tensor:
+        """Return all configured DFT columns as a float tensor with NaNs preserved."""
+        if not self.dft_feature_columns:
+            return torch.empty(len(self.rows), 0, dtype=torch.float32)
+        values = self.rows[self.dft_feature_columns].apply(lambda col: pd.to_numeric(col, errors="coerce"))
+        return torch.tensor(values.to_numpy(dtype=np.float32), dtype=torch.float32)
+
+    def _row_dft_features(self, row) -> torch.Tensor:
+        values = [pd.to_numeric(row[column], errors="coerce") for column in self.dft_feature_columns]
+        values = [float(value) if pd.notna(value) else float("nan") for value in values]
+        return torch.tensor(values, dtype=torch.float32)
 
     def _resolve_cif_path(self, value: object) -> Path:
         path = Path(str(value))
@@ -94,7 +122,7 @@ def collate_crystals(batch: Sequence[dict]) -> dict:
         a[idx, :n_atoms] = item["A"].long()
         atom_mask[idx, :n_atoms] = True
 
-    return {
+    collated = {
         "X": x,
         "A": a,
         "L": torch.stack([item["L"].float() for item in batch], dim=0),
@@ -104,6 +132,11 @@ def collate_crystals(batch: Sequence[dict]) -> dict:
         "formula": [item["formula"] for item in batch],
         "cif_path": [item["cif_path"] for item in batch],
     }
+    if "dft_features" in batch[0]:
+        collated["dft_features"] = torch.stack([item["dft_features"].float() for item in batch])
+    if "dft_features_raw" in batch[0]:
+        collated["dft_features_raw"] = torch.stack([item["dft_features_raw"].float() for item in batch])
+    return collated
 
 
 def split_dataset(dataset: Dataset, train: float, val: float, test: float, seed: int) -> tuple[Subset, Subset, Subset]:

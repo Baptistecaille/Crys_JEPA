@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from src.datasets.threedsc_dataset import ThreeDSCDataset, collate_crystals, split_dataset
 from src.models.crys_jepa_wrapper import build_crys_jepa_encoder
 from src.models.superconductivity_heads import SuperconductivityCrysJEPA
+from src.utils.dft_features import DFTFeatureScaler
 from src.utils.metrics import classification_metrics, regression_metrics
 
 
@@ -69,6 +70,7 @@ def build_model_from_config(config: dict) -> SuperconductivityCrysJEPA:
     encoder = build_crys_jepa_encoder(config)
     model_cfg = config.get("model", {})
     train_cfg = config.get("training", {})
+    dft_columns = config.get("data", {}).get("dft_features", [])
     return SuperconductivityCrysJEPA(
         crys_jepa_encoder=encoder,
         z_dim=int(model_cfg.get("z_dim", getattr(encoder, "z_dim", 512))),
@@ -76,6 +78,9 @@ def build_model_from_config(config: dict) -> SuperconductivityCrysJEPA:
         freeze_encoder=bool(train_cfg.get("freeze_encoder", True)),
         use_uncertainty=bool(model_cfg.get("use_uncertainty", False)),
         dropout=float(model_cfg.get("dropout", 0.1)),
+        input_mode=model_cfg.get("input_mode", "crys_jepa"),
+        dft_feature_dim=int(model_cfg.get("dft_feature_dim", len(dft_columns))),
+        dft_embedding_dim=int(model_cfg.get("dft_embedding_dim", 64)),
     )
 
 
@@ -84,6 +89,7 @@ def build_loaders(config: dict) -> tuple[DataLoader, DataLoader, DataLoader]:
     data_cfg = config["data"]
     split_cfg = config["splits"]
     train_cfg = config["training"]
+    dft_columns = data_cfg.get("dft_features", []) if config.get("model", {}).get("input_mode", "crys_jepa") in {"dft", "crys_jepa_dft"} else []
     dataset = ThreeDSCDataset(
         csv_path=data_cfg["csv_path"],
         cif_dir=data_cfg["cif_dir"],
@@ -91,6 +97,7 @@ def build_loaders(config: dict) -> tuple[DataLoader, DataLoader, DataLoader]:
         tc_column=data_cfg.get("tc_column", "Tc"),
         cif_column=data_cfg.get("cif_column", "cif_path"),
         csv_comment=data_cfg.get("csv_comment"),
+        dft_feature_columns=dft_columns,
         primitive=bool(data_cfg.get("primitive", False)),
         reduced=bool(data_cfg.get("reduced", False)),
     )
@@ -101,6 +108,14 @@ def build_loaders(config: dict) -> tuple[DataLoader, DataLoader, DataLoader]:
         test=float(split_cfg.get("test", 0.1)),
         seed=int(train_cfg.get("seed", 42)),
     )
+    if dft_columns:
+        train_values = dataset.raw_dft_matrix()[train_set.indices]
+        scaler_state = config.get("runtime", {}).get("dft_scaler")
+        scaler = DFTFeatureScaler.from_state_dict(scaler_state) if scaler_state else DFTFeatureScaler.fit(train_values)
+        dataset.set_dft_scaler(scaler)
+        config.setdefault("runtime", {})["dft_scaler"] = scaler.state_dict()
+        config.setdefault("model", {})["dft_feature_dim"] = len(dft_columns)
+
     batch_size = int(train_cfg.get("batch_size", 32))
     return (
         DataLoader(train_set, batch_size=batch_size, shuffle=True, collate_fn=collate_crystals),

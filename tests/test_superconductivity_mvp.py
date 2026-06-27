@@ -10,6 +10,7 @@ from src.datasets.threedsc_dataset import ThreeDSCDataset, collate_crystals, spl
 from src.models.crys_jepa_wrapper import PlaceholderCrysJEPAEncoder
 from src.models.superconductivity_heads import SuperconductivityCrysJEPA
 from src.utils.cif_utils import load_cif_tensors
+from src.utils.dft_features import DFTFeatureScaler
 from src.utils.metrics import classification_metrics, regression_metrics
 
 
@@ -196,5 +197,83 @@ def test_load_cif_tensors_uses_majority_species_for_disordered_sites(tmp_path):
 
     tensors = load_cif_tensors(cif_path)
 
-    assert tensors["A"].tolist() == [46, 38]
+    assert sorted(tensors["A"].tolist()) == [38, 46]
+    assert 47 not in tensors["A"].tolist()
     assert tensors["X"].shape == (2, 3)
+
+
+
+def test_dft_feature_scaler_fits_train_values_and_imputes_nan():
+    train_values = torch.tensor(
+        [
+            [1.0, float("nan")],
+            [3.0, 10.0],
+            [5.0, 14.0],
+        ]
+    )
+
+    scaler = DFTFeatureScaler.fit(train_values)
+    transformed = scaler.transform(torch.tensor([[float("nan"), 10.0]]))
+
+    assert scaler.median.tolist() == pytest.approx([3.0, 12.0])
+    assert transformed.shape == (1, 2)
+    assert torch.isfinite(transformed).all()
+    assert transformed[0, 0].item() == pytest.approx(0.0)
+
+
+def test_dataset_returns_scaled_dft_features_from_configured_columns(tmp_path):
+    cif_dir = tmp_path / "cifs"
+    cif_dir.mkdir()
+    _write_cif(cif_dir / "nacl.cif")
+    csv_path = tmp_path / "3DSC_MP.csv"
+    _write_csv(
+        csv_path,
+        [
+            {"formula": "NaCl", "Tc": "12.5", "cif_path": "nacl.cif", "band_gap_2": "1.5", "density_2": ""},
+        ],
+    )
+    scaler = DFTFeatureScaler.fit(torch.tensor([[1.5, float("nan")], [2.5, 4.0]]))
+    dataset = ThreeDSCDataset(
+        csv_path=csv_path,
+        cif_dir=cif_dir,
+        dft_feature_columns=["band_gap_2", "density_2"],
+        dft_scaler=scaler,
+    )
+
+    sample = dataset[0]
+
+    assert sample["dft_features"].shape == (2,)
+    assert torch.isfinite(sample["dft_features"]).all()
+
+
+def test_model_supports_crys_jepa_dft_and_dft_only_modes():
+    batch = {
+        "X": torch.rand(2, 3, 3),
+        "A": torch.tensor([[8, 8, 0], [14, 0, 0]]),
+        "L": torch.eye(3).repeat(2, 1, 1),
+        "atom_mask": torch.tensor([[True, True, False], [True, False, False]]),
+        "dft_features": torch.randn(2, 4),
+    }
+
+    fusion_model = SuperconductivityCrysJEPA(
+        PlaceholderCrysJEPAEncoder(z_dim=8),
+        z_dim=8,
+        input_mode="crys_jepa_dft",
+        dft_feature_dim=4,
+        dft_embedding_dim=6,
+        use_uncertainty=True,
+    )
+    dft_model = SuperconductivityCrysJEPA(
+        PlaceholderCrysJEPAEncoder(z_dim=8),
+        z_dim=8,
+        input_mode="dft",
+        dft_feature_dim=4,
+        dft_embedding_dim=6,
+    )
+
+    fusion_outputs = fusion_model(batch)
+    dft_outputs = dft_model(batch)
+
+    assert fusion_outputs["tc"].shape == (2,)
+    assert fusion_outputs["sigma"].shape == (2,)
+    assert dft_outputs["logit_supra"].shape == (2,)

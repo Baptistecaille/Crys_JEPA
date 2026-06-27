@@ -7,6 +7,15 @@ data:
   csv_comment: "#"
   primitive: false
   reduced: false
+  dft_features:
+    - band_gap_2
+    - e_above_hull_2
+    - efermi_2
+    - formation_energy_per_atom_2
+    - energy_per_atom_2
+    - density_2
+    - nsites_2
+    - total_magnetization_2
 
 training:
   batch_size: 32
@@ -25,11 +34,13 @@ splits:
   test: 0.1
 
 model:
+  input_mode: "crys_jepa_dft"
   z_dim: 512
   head_hidden_dim: 256
   dropout: 0.1
   use_uncertainty: true
-  use_dft_features: false
+  use_dft_features: true
+  dft_embedding_dim: 64
   crys_jepa_checkpoint: null
   crys_jepa_config: "configs/jepa/mp.yml"
 

@@ -193,3 +193,27 @@ Uncertainty: 7.40 K
 5. Materials Project candidate screening.
 6. Energy-above-hull filtering.
 7. High-Tc-oriented objectives instead of plain classification.
+
+### DFT Feature Ablation
+
+The supervised MVP supports three input modes for a clean scientific ablation:
+
+- `crys_jepa`: structure embedding only.
+- `dft`: numerical DFT features only.
+- `crys_jepa_dft`: late fusion of the structure embedding and a DFT MLP.
+
+The default config now uses `crys_jepa_dft`. To run the three comparable variants on the same deterministic split:
+
+```bash
+python scripts/train_mvp.py --config configs/ablation/crys_jepa.yaml
+python scripts/train_mvp.py --config configs/ablation/dft.yaml
+python scripts/train_mvp.py --config configs/ablation/crys_jepa_dft.yaml
+```
+
+Or run the full ablation table in one command:
+
+```bash
+python scripts/run_dft_ablation.py --output ablation_results.csv
+```
+
+DFT columns are read from the 3DSC CSV, imputed with train-split medians, and standardized with train-split mean/std only. The scaler statistics are saved in the checkpoint config so validation, test, and later evaluation use the same transform.
