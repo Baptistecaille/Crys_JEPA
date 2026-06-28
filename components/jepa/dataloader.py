@@ -46,7 +46,7 @@ class CrystalDataset(Dataset):
         atomic_numbers = self.data['atomic_numbers'][start: end]
         ori_matrix = vector2matrix(matrix)
 
-        scalar_matrix = self.matrix_scaler.transform(scaled_matrix)
+        scalar_matrix = self.matrix_scaler.transform(scaled_matrix).reshape(-1)
         return frac_coords, scalar_matrix, atomic_numbers, ori_matrix, num_atoms, ef_per_atom
 
     def add_scaled_matrix(self, data):
@@ -56,9 +56,31 @@ class CrystalDataset(Dataset):
         matrix = matrix / num_atoms.float()**(1/3)
         data['scaled_matrix'] = matrix
 
+    def max_samples(self) -> int | None:
+        """Return an optional crystal count cap for local smoke pretraining."""
+        data_cfg = getattr(self.config, "data", None)
+        max_samples = getattr(data_cfg, "max_samples", None) if data_cfg is not None else None
+        return int(max_samples) if max_samples else None
+
+    def limit_samples(self, data, max_samples: int):
+        """Limit a prepared dataset to the first N crystals."""
+        if max_samples >= len(data["num_atoms"]):
+            return data
+        atom_count = int(data["num_atoms"][:max_samples].sum().item())
+        limited = {}
+        for key, value in data.items():
+            if key in {"frac_coords", "atomic_numbers"}:
+                limited[key] = value[:atom_count]
+            elif key == "material_id":
+                limited[key] = value[:max_samples]
+            else:
+                limited[key] = value[:max_samples]
+        return limited
+
     def fetch_datasets(self):
         """Load or build the cached MP2023 and MPTRJ JEPA datasets."""
         data = []
+        max_samples = self.max_samples()
         print("Loading mp2023")
         mp2023_path = os.path.join('data', "jepa", "prepared_mp2023_sub.pt")
         if os.path.exists(mp2023_path):
@@ -66,6 +88,9 @@ class CrystalDataset(Dataset):
         else:
             mp2023 = self.read_from_csv("./data/jepa/mp.csv.gz")
             torch.save(mp2023, mp2023_path)
+        if max_samples and max_samples <= len(mp2023["num_atoms"]):
+            self.data = self.limit_samples(mp2023, max_samples)
+            return
         data.append(mp2023)
         
         print("Loading mptrj")
@@ -77,6 +102,8 @@ class CrystalDataset(Dataset):
             torch.save(mptrj, mptrj_path)
         data.append(mptrj)
         self.data = {k: torch.cat([one[k] for one in data], 0) for k in data[0].keys() if k!='material_id'}
+        if max_samples:
+            self.data = self.limit_samples(self.data, max_samples)
     
     def read_from_csv(self, path):
         """Read a CSV source and convert it into cached tensor data."""

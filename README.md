@@ -217,3 +217,20 @@ python scripts/run_dft_ablation.py --output ablation_results.csv
 ```
 
 DFT columns are read from the 3DSC CSV, imputed with train-split medians, and standardized with train-split mean/std only. The scaler statistics are saved in the checkpoint config so validation, test, and later evaluation use the same transform.
+
+
+### Partial Crys-JEPA Fine-Tuning
+
+When a real pretrained Crys-JEPA checkpoint is available, the supervised DFT-JEPA model can compare frozen and partially fine-tuned encoders:
+
+- `frozen`: pretrained Crys-JEPA kept frozen.
+- `last1`: only the last transformer block plus final norm are trainable.
+- `last2`: last two transformer blocks plus final norm are trainable with a smaller encoder LR.
+
+Run all three variants with:
+
+```bash
+python scripts/run_partial_finetune.py --checkpoint path/to/crys_jepa_checkpoint.pt --matrix-scaler data/jepa/mean_std_scaler.pt --output partial_finetune_results.csv
+```
+
+The optimizer uses separate parameter groups: `training.learning_rate` for heads/fusion layers and `training.encoder_learning_rate` for trainable Crys-JEPA layers. The default fine-tuning configs live in `configs/finetune_dft_jepa/`.

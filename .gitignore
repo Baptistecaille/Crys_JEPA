@@ -1,3 +1,5 @@
 *.cif
 *.csv
+*.csv.gz
+*.pt
 *.pyc

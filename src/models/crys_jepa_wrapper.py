@@ -9,6 +9,20 @@ from easydict import EasyDict
 from src.utils.cif_utils import lattice_to_symmetric_features
 
 
+def load_crys_jepa_matrix_scaler(path: str | Path | None):
+    """Load the Crys-JEPA lattice scaler when the pretrained run provides one."""
+    if not path:
+        return None
+    scaler_path = Path(path)
+    if not scaler_path.exists():
+        return None
+    from utils.utils import Scaler_mean_std
+
+    scaler = Scaler_mean_std()
+    scaler.load(torch.load(scaler_path, map_location="cpu", weights_only=False))
+    return scaler
+
+
 class IdentityScaler:
     """Fallback matrix scaler used when Crys-JEPA scaling statistics are unavailable."""
 
@@ -38,6 +52,40 @@ class PlaceholderCrysJEPAEncoder(nn.Module):
         return self.out(torch.cat([pooled_atoms, lattice], dim=-1))
 
 
+
+def _set_module_trainable(module: nn.Module, trainable: bool) -> int:
+    """Set requires_grad on a module and return its parameter count."""
+    count = 0
+    for param in module.parameters():
+        param.requires_grad = trainable
+        count += param.numel()
+    return count
+
+
+def configure_jepa_partial_finetuning(jepa_model: nn.Module, unfreeze_last_n_layers: int = 1) -> int:
+    """Freeze JEPA, then unfreeze the last N transformer blocks and final norm."""
+    if unfreeze_last_n_layers < 0:
+        raise ValueError("unfreeze_last_n_layers must be non-negative")
+
+    for param in jepa_model.parameters():
+        param.requires_grad = False
+
+    if unfreeze_last_n_layers == 0:
+        return 0
+    if not hasattr(jepa_model, "backbone") or not hasattr(jepa_model.backbone, "block"):
+        raise ValueError("Expected JEPA model with backbone.block for partial fine-tuning")
+
+    blocks = list(jepa_model.backbone.block)
+    n_layers = min(unfreeze_last_n_layers, len(blocks))
+    trainable_params = 0
+    for block in blocks[-n_layers:]:
+        trainable_params += _set_module_trainable(block, True)
+
+    if hasattr(jepa_model.backbone, "norm"):
+        trainable_params += _set_module_trainable(jepa_model.backbone.norm, True)
+    return trainable_params
+
+
 class CrysJEPAEncoderAdapter(nn.Module):
     """Adapter exposing the pretrained Crys-JEPA encoder as forward(X, A, L, atom_mask)."""
 
@@ -47,8 +95,17 @@ class CrysJEPAEncoderAdapter(nn.Module):
         config_path: str | Path = "configs/jepa/mp.yml",
         matrix_scaler: object | None = None,
         freeze_encoder: bool = True,
+        unfreeze_last_n_layers: int = 0,
     ) -> None:
         super().__init__()
+        checkpoint_path = Path(checkpoint_path).expanduser()
+        if not checkpoint_path.exists():
+            raise FileNotFoundError(
+                "Crys-JEPA checkpoint not found: "
+                f"{checkpoint_path}. Set model.crys_jepa_checkpoint to a pretrained JEPA checkpoint "
+                "saved by I_train_jepa.py, or set it to null to use PlaceholderCrysJEPAEncoder."
+            )
+
         from components.jepa.frame.jepa import JEPA
 
         with Path(config_path).open("r", encoding="utf-8") as handle:
@@ -62,10 +119,13 @@ class CrysJEPAEncoderAdapter(nn.Module):
         self.encoder.load_state_dict(state, strict=False)
         self.z_dim = int(config.model.hidden_dim)
         self.freeze_encoder = freeze_encoder
+        self.unfreeze_last_n_layers = unfreeze_last_n_layers
         if freeze_encoder:
             for param in self.encoder.parameters():
                 param.requires_grad = False
             self.encoder.eval()
+        else:
+            configure_jepa_partial_finetuning(self.encoder, unfreeze_last_n_layers=unfreeze_last_n_layers)
 
     def forward(self, X: torch.Tensor, A: torch.Tensor, L: torch.Tensor, atom_mask: torch.Tensor) -> torch.Tensor:
         context = torch.no_grad() if self.freeze_encoder else torch.enable_grad()
@@ -96,9 +156,12 @@ def build_crys_jepa_encoder(config: dict) -> nn.Module:
     z_dim = int(model_cfg.get("z_dim", 512))
     checkpoint_path = model_cfg.get("crys_jepa_checkpoint")
     if checkpoint_path:
+        matrix_scaler = load_crys_jepa_matrix_scaler(model_cfg.get("crys_jepa_matrix_scaler", "data/jepa/mean_std_scaler.pt"))
         return CrysJEPAEncoderAdapter(
             checkpoint_path=checkpoint_path,
             config_path=model_cfg.get("crys_jepa_config", "configs/jepa/mp.yml"),
+            matrix_scaler=matrix_scaler,
             freeze_encoder=bool(config.get("training", {}).get("freeze_encoder", True)),
+            unfreeze_last_n_layers=int(model_cfg.get("unfreeze_last_n_layers", 0)),
         )
     return PlaceholderCrysJEPAEncoder(z_dim=z_dim)

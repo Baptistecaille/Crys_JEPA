@@ -54,6 +54,34 @@ def _save_checkpoint(payload: dict, path: Path) -> None:
         raise RuntimeError(f"Could not save checkpoint to {path.resolve()}") from exc
 
 
+def build_optimizer(model: torch.nn.Module, config: dict) -> torch.optim.Optimizer:
+    """Build AdamW with a smaller LR for trainable encoder parameters."""
+    training = config["training"]
+    head_lr = float(training.get("learning_rate", 1e-4))
+    encoder_lr = float(training.get("encoder_learning_rate", head_lr))
+    weight_decay = float(training.get("weight_decay", 1e-4))
+
+    encoder_param_ids = {id(param) for param in getattr(model, "encoder", torch.nn.Module()).parameters()}
+    encoder_params = []
+    head_params = []
+    for param in model.parameters():
+        if not param.requires_grad:
+            continue
+        if id(param) in encoder_param_ids:
+            encoder_params.append(param)
+        else:
+            head_params.append(param)
+
+    param_groups = []
+    if encoder_params:
+        param_groups.append({"params": encoder_params, "lr": encoder_lr})
+    if head_params:
+        param_groups.append({"params": head_params, "lr": head_lr})
+    if not param_groups:
+        raise ValueError("No trainable parameters found for optimizer")
+    return torch.optim.AdamW(param_groups, weight_decay=weight_decay)
+
+
 def train_from_config(config: dict) -> dict:
     """Train the MVP model and save the best validation checkpoint."""
     training = config["training"]
@@ -67,11 +95,7 @@ def train_from_config(config: dict) -> dict:
         lambda_tc=float(training.get("lambda_tc", 1.0)),
         regression_loss=training.get("regression_loss", "smooth_l1"),
     )
-    optimizer = torch.optim.AdamW(
-        [param for param in model.parameters() if param.requires_grad],
-        lr=float(training.get("learning_rate", 1e-4)),
-        weight_decay=float(training.get("weight_decay", 1e-4)),
-    )
+    optimizer = build_optimizer(model, config)
 
     best_path = _checkpoint_path(checkpoints)
     best_score = float("inf")

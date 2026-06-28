@@ -1,0 +1,11 @@
+INFO - utils.py - 2026-06-27 23:01:02,491 - Using device: cuda
+INFO - utils.py - 2026-06-27 23:02:08,009 - Using device: cuda
+INFO - utils.py - 2026-06-27 23:15:36,369 - Using device: cpu
+INFO - utils.py - 2026-06-27 23:19:25,190 - Using device: cpu
+INFO - utils.py - 2026-06-27 23:30:48,522 - Using device: cpu
+INFO - utils.py - 2026-06-27 23:31:49,227 - Using device: cpu
+INFO - utils.py - 2026-06-27 23:32:18,961 - Using device: cpu
+INFO - utils.py - 2026-06-27 23:35:34,456 - Using device: cpu
+INFO - I_train_jepa.py - 2026-06-27 23:35:39,718 - training completed
+INFO - utils.py - 2026-06-28 11:17:40,732 - Using device: cpu
+INFO - I_train_jepa.py - 2026-06-28 11:17:44,833 - training completed

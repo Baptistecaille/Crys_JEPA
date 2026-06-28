@@ -1,7 +1,7 @@
-"""Distributed training entrypoint for the JEPA encoder.
+"""Training entrypoint for the JEPA encoder.
 
-This script builds the JEPA dataset, launches one process per GPU with DDP,
-and saves the best checkpoint according to the average training loss.
+This script builds the JEPA dataset, launches DDP on CUDA when GPUs are
+available, and falls back to a single CPU process otherwise.
 """
 
 import os
@@ -37,31 +37,43 @@ def collate(batch):
     return frac_coords, matrix, atomic_numbers, ori_matrix, num_atoms, ef_per_atom
 
 def train(rank, world_size, args, config):
-    """Run one DDP training worker for the JEPA encoder."""
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = args.port
-    dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)
-    torch.cuda.set_device(rank)
-    device = torch.device(f"cuda:{rank}")
+    """Run one training worker for the JEPA encoder."""
+    use_ddp = world_size > 1 and torch.cuda.is_available()
+    if use_ddp:
+        os.environ['MASTER_ADDR'] = 'localhost'
+        os.environ['MASTER_PORT'] = args.port
+        dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)
+        torch.cuda.set_device(rank)
+        device = torch.device(f"cuda:{rank}")
+    else:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    config.device = device
 
     ## Initialize Dataset
     train = CrystalDataset(config)
     scaled_matrix = train.data['scaled_matrix']
-    train.matrix_scaler = get_scaler_mean_std(args.task, scaled_matrix)
+    train.matrix_scaler = get_scaler_mean_std(args.task, scaled_matrix=scaled_matrix)
     print("Size of Training set: {}".format(train.__len__()))
 
-    train_sampler = DistributedSampler(train, num_replicas=world_size, rank=rank, shuffle=True)
-    train_loader = DataLoader(train, sampler=train_sampler, batch_size=config.training.batch_size, collate_fn=collate)
+    train_sampler = DistributedSampler(train, num_replicas=world_size, rank=rank, shuffle=True) if use_ddp else None
+    train_loader = DataLoader(
+        train,
+        sampler=train_sampler,
+        shuffle=train_sampler is None,
+        batch_size=config.training.batch_size,
+        collate_fn=collate,
+    )
     
 
     ## Initialize Model
     model = JEPA(config, matrix_scaler=train.matrix_scaler).to(device)
     print("Model parameters: {}".format(sum(p.numel() for p in model.parameters())))
 
-    model = DDP(model, device_ids=[rank], output_device=rank)
+    if use_ddp:
+        model = DDP(model, device_ids=[rank], output_device=rank)
 
     ## Initialize Wandb
-    if rank==0:
+    if rank == 0 and not getattr(args, "disable_wandb", False):
             wandb.init(
                 project=config.wandb.project, 
                 name=args.task, 
@@ -71,8 +83,9 @@ def train(rank, world_size, args, config):
 
     ## Initialize Optimizer and Scheduler
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.training.lr, weight_decay=5e-2)
-    if config.use_gradscalar:
-        scaler = GradScaler(enabled = True)
+    use_amp = bool(config.use_gradscalar) and device.type == "cuda"
+    if use_amp:
+        scaler = GradScaler(enabled=True)
     if config.use_schedule:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.6, patience=60, min_lr=1e-6)
     else:
@@ -86,12 +99,13 @@ def train(rank, world_size, args, config):
     for epoch in tqdm(range(start_epoch+1, start_epoch+config.training.epochs), desc="Training..."):
         curr_loss = []
 
-        train_sampler.set_epoch(epoch)
+        if train_sampler is not None:
+            train_sampler.set_epoch(epoch)
         model.train()
         for i, data in enumerate(train_loader):
             optimizer.zero_grad()
             loss = model(data).mean()
-            if config.use_gradscalar:
+            if use_amp:
                 with autocast(device_type="cuda"):
                     scaler.scale(loss).backward()
                 scaler.step(optimizer)
@@ -102,11 +116,13 @@ def train(rank, world_size, args, config):
             curr_loss.append(loss.detach().item())
             
         curr_loss = sum(curr_loss) / len(curr_loss)
-        if rank==0:
-            wandb.log({"epoch": epoch, "epoch_loss": curr_loss}, step=epoch)
+        if rank == 0:
+            if not getattr(args, "disable_wandb", False):
+                wandb.log({"epoch": epoch, "epoch_loss": curr_loss}, step=epoch)
             if config.use_schedule:
                 scheduler.step(curr_loss)
-                wandb.log({"lr": scheduler.get_last_lr()[0]}, step=epoch)
+                if not getattr(args, "disable_wandb", False):
+                    wandb.log({"lr": scheduler.get_last_lr()[0]}, step=epoch)
             
             if curr_loss < best_loss:
                 best_loss = curr_loss
@@ -114,7 +130,7 @@ def train(rank, world_size, args, config):
                 os.makedirs(save_path, exist_ok=True)
                 torch.save({
                     "epoch": epoch,
-                    "model_state_dict": model.state_dict(),
+                    "model_state_dict": model.module.state_dict() if use_ddp else model.state_dict(),
                     "loss": best_loss,
                     "optimizer_state_dict": optimizer.state_dict(),
                     "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
@@ -122,11 +138,16 @@ def train(rank, world_size, args, config):
                 check_save_num(save_path)
                 
     args.logger.info('training completed')
-    dist.destroy_process_group()
-    if rank==0:
+    if use_ddp:
+        dist.destroy_process_group()
+    if rank == 0 and not getattr(args, "disable_wandb", False):
         wandb.finish()
     
 if __name__ == '__main__':
     args, config = parse_args_and_config("jepa")
     world_size = torch.cuda.device_count()
-    mp.spawn(train, args=(world_size, args, config), nprocs=world_size, join=True)
+    args.disable_wandb = world_size == 0 or os.environ.get("WANDB_MODE") == "disabled"
+    if world_size > 1:
+        mp.spawn(train, args=(world_size, args, config), nprocs=world_size, join=True)
+    else:
+        train(0, max(world_size, 1), args, config)

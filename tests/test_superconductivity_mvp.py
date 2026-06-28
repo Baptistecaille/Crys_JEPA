@@ -7,10 +7,15 @@ from pymatgen.core import Lattice, Structure
 from pymatgen.io.cif import CifWriter
 
 from src.datasets.threedsc_dataset import ThreeDSCDataset, collate_crystals, split_dataset
-from src.models.crys_jepa_wrapper import PlaceholderCrysJEPAEncoder
+from src.models.crys_jepa_wrapper import (
+    PlaceholderCrysJEPAEncoder,
+    build_crys_jepa_encoder,
+    configure_jepa_partial_finetuning,
+)
 from src.models.superconductivity_heads import SuperconductivityCrysJEPA
 from src.utils.cif_utils import load_cif_tensors
 from src.utils.dft_features import DFTFeatureScaler
+from src.training.train import build_optimizer
 from src.utils.metrics import classification_metrics, regression_metrics
 
 
@@ -277,3 +282,66 @@ def test_model_supports_crys_jepa_dft_and_dft_only_modes():
     assert fusion_outputs["tc"].shape == (2,)
     assert fusion_outputs["sigma"].shape == (2,)
     assert dft_outputs["logit_supra"].shape == (2,)
+
+
+
+def test_partial_finetuning_unfreezes_only_last_jepa_blocks():
+    class FakeJEPA(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.pre_backbone = torch.nn.Linear(2, 2)
+            self.backbone = torch.nn.Module()
+            self.backbone.block = torch.nn.ModuleList([torch.nn.Linear(2, 2) for _ in range(3)])
+            self.backbone.norm = torch.nn.LayerNorm(2)
+            self.predictor = torch.nn.Linear(2, 2)
+            self.cond_emb = torch.nn.Linear(2, 2)
+
+    fake = FakeJEPA()
+    trainable = configure_jepa_partial_finetuning(fake, unfreeze_last_n_layers=1)
+
+    assert trainable > 0
+    assert all(not param.requires_grad for param in fake.pre_backbone.parameters())
+    assert all(not param.requires_grad for param in fake.backbone.block[0].parameters())
+    assert all(not param.requires_grad for param in fake.backbone.block[1].parameters())
+    assert all(param.requires_grad for param in fake.backbone.block[2].parameters())
+    assert all(param.requires_grad for param in fake.backbone.norm.parameters())
+    assert all(not param.requires_grad for param in fake.predictor.parameters())
+    assert all(not param.requires_grad for param in fake.cond_emb.parameters())
+
+
+def test_build_optimizer_uses_separate_encoder_learning_rate():
+    encoder = PlaceholderCrysJEPAEncoder(z_dim=8)
+    model = SuperconductivityCrysJEPA(
+        encoder,
+        z_dim=8,
+        freeze_encoder=False,
+        input_mode="crys_jepa",
+    )
+    config = {
+        "training": {
+            "learning_rate": 1e-4,
+            "encoder_learning_rate": 1e-5,
+            "weight_decay": 1e-4,
+        }
+    }
+
+    optimizer = build_optimizer(model, config)
+
+    assert len(optimizer.param_groups) == 2
+    assert sorted(group["lr"] for group in optimizer.param_groups) == [1e-5, 1e-4]
+    assert sum(len(group["params"]) for group in optimizer.param_groups) == len(
+        [param for param in model.parameters() if param.requires_grad]
+    )
+
+
+def test_build_crys_jepa_encoder_reports_missing_checkpoint(tmp_path):
+    missing_checkpoint = tmp_path / "missing_pretrained.pt"
+    config = {
+        "model": {
+            "crys_jepa_checkpoint": str(missing_checkpoint),
+            "crys_jepa_config": "configs/jepa/mp.yml",
+        }
+    }
+
+    with pytest.raises(FileNotFoundError, match="Crys-JEPA checkpoint not found"):
+        build_crys_jepa_encoder(config)

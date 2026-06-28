@@ -53,7 +53,7 @@ def parse_args_and_config(task):
     args.logger = logger
 
     # add device
-    device = torch.device('cuda')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info("Using device: {}".format(device))
     new_config.device = device
 

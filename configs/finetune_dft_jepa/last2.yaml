@@ -1,0 +1,56 @@
+data:
+  csv_path: "data/raw/3DSC_MP.csv"
+  cif_dir: "data/raw/cifs"
+  formula_column: "formula_sc"
+  tc_column: "tc"
+  cif_column: "cif"
+  csv_comment: "#"
+  primitive: false
+  reduced: false
+  dft_features:
+    - band_gap_2
+    - e_above_hull_2
+    - efermi_2
+    - formation_energy_per_atom_2
+    - energy_per_atom_2
+    - density_2
+    - nsites_2
+    - total_magnetization_2
+
+training:
+  batch_size: 32
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  epochs: 50
+  seed: 42
+  freeze_encoder: false
+  encoder_learning_rate: 5.0e-6
+  lambda_tc: 1.0
+  regression_loss: "smooth_l1"
+  device: "cuda"
+
+splits:
+  train: 0.8
+  val: 0.1
+  test: 0.1
+
+model:
+  input_mode: "crys_jepa_dft"
+  z_dim: 512
+  head_hidden_dim: 256
+  dropout: 0.1
+  use_uncertainty: true
+  use_dft_features: true
+  dft_embedding_dim: 64
+  crys_jepa_checkpoint: "checkpoints/crys_jepa_pretrained.pt"
+  crys_jepa_config: "configs/jepa/mp.yml"
+  crys_jepa_matrix_scaler: "data/jepa/mean_std_scaler.pt"
+  unfreeze_last_n_layers: 2
+
+checkpoints:
+  save_dir: "checkpoints/finetune_dft_jepa/last2"
+  best_name: "best.pt"
+
+evaluation:
+  high_tc_threshold: 77.0
+  predictions_csv: "predictions.csv"
