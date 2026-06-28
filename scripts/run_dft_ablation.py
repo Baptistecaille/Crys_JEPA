@@ -1,3 +1,5 @@
+"""Run the supervised input-mode ablation and write a metrics CSV."""
+
 import argparse
 import csv
 from pathlib import Path
@@ -13,6 +15,7 @@ DEFAULT_CONFIGS = [
 
 
 def _flatten_result(mode: str, result: dict) -> dict:
+    """Flatten nested training metrics into one CSV row."""
     cls = result["test_metrics"]["classification"]
     reg = result["test_metrics"]["regression"]
     return {
@@ -32,6 +35,7 @@ def _flatten_result(mode: str, result: dict) -> dict:
 
 
 def main(output_csv: str) -> None:
+    """Train each default ablation config and persist the comparison table."""
     rows = []
     for mode, config_path in DEFAULT_CONFIGS:
         print(f"\n=== Training {mode} ===")

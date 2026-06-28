@@ -21,12 +21,23 @@ git clone https://github.com/liun-online/Crys_JEPA.git
 cd Crys_JEPA/
 
 uv sync
+```
+
+The project uses Python 3.12.
+`pyproject.toml` is configured to use PyTorch 2.6.0 CUDA 12.4 wheels on Linux/Windows, and default
+PyPI wheels on macOS.
+
+Install `torch_scatter` according to your platform:
+
+- Linux/Windows with CUDA 12.4:
+```
 uv pip install torch_scatter -f https://data.pyg.org/whl/torch-2.6.0+cu124.html
 ```
 
-The project uses Python 3.12 and installs the PyTorch 2.6.0 CUDA 12.4 wheels via `pyproject.toml`.
-If you need CPU-only PyTorch, remove the `pytorch-cu124` entries from `pyproject.toml` and run
-`uv sync` again.
+- macOS (CPU/MPS):
+```
+uv pip install torch_scatter
+```
 
 MatterSim is only needed for the relaxation step (`IV_relax.py`) and is optional:
 ```

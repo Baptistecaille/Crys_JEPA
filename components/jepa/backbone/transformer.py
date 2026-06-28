@@ -9,6 +9,8 @@ import torch.nn as nn
 import math
 
 class MLP(nn.Module):
+    """Small feed-forward projection block used around transformer layers."""
+
     def __init__(self, in_dim, hidden_dim, out_dim, n_layers=2):
         """Build a feed-forward block used inside the JEPA transformer."""
         assert n_layers >= 2
@@ -28,6 +30,8 @@ class MLP(nn.Module):
         return x
 
 class MHA(nn.Module):
+    """Multi-head attention module with explicit padding-mask handling."""
+
     def __init__(self, attn_head, dim, dropout):
         """Create a masked multi-head self-attention layer for JEPA."""
         super(MHA, self).__init__()
@@ -62,6 +66,8 @@ class MHA(nn.Module):
         return attn_out
 
 class Decoder_layer(nn.Module):
+    """Single JEPA transformer block with pre-norm attention and feed-forward path."""
+
     def __init__(self, dim, attn_head, dropout):
         """Combine masked self-attention with a residual MLP block."""
         assert dim % attn_head == 0 
@@ -90,6 +96,8 @@ class Decoder_layer(nn.Module):
         return h
     
 class Transformer(nn.Module):
+    """Transformer encoder that prepends a CLS token for crystal-level embeddings."""
+
     def __init__(self, hidden_dim, layers, attn_head, dropout):
         """Build the JEPA transformer encoder used for crystal embeddings."""
         super(Transformer, self).__init__()

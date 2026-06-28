@@ -1,4 +1,6 @@
 
+"""CIF loading and lattice feature conversion helpers."""
+
 from pathlib import Path
 
 import torch

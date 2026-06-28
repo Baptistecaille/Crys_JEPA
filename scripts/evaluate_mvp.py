@@ -1,3 +1,5 @@
+"""CLI wrapper for evaluating a supervised 3DSC checkpoint."""
+
 import argparse
 
 import _bootstrap  # noqa: F401

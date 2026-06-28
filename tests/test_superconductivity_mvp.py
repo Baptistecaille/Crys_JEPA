@@ -1,3 +1,5 @@
+"""End-to-end unit tests for the 3DSC superconductivity MVP components."""
+
 import csv
 from pathlib import Path
 
@@ -20,6 +22,7 @@ from src.utils.metrics import classification_metrics, regression_metrics
 
 
 def _write_cif(path: Path, formula: str = "NaCl") -> None:
+    """Write a tiny synthetic CIF file for dataset tests."""
     species = ["Na", "Cl"] if formula == "NaCl" else ["Mg"]
     coords = [[0, 0, 0], [0.5, 0.5, 0.5]] if formula == "NaCl" else [[0, 0, 0]]
     structure = Structure(Lattice.cubic(5.64), species, coords)
@@ -27,6 +30,7 @@ def _write_cif(path: Path, formula: str = "NaCl") -> None:
 
 
 def _write_csv(path: Path, rows: list[dict[str, str]]) -> None:
+    """Write a small CSV fixture with headers inferred from the first row."""
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=rows[0].keys())
         writer.writeheader()
@@ -34,6 +38,7 @@ def _write_csv(path: Path, rows: list[dict[str, str]]) -> None:
 
 
 def test_dataset_reads_csv_and_extracts_crystal_tensors(tmp_path):
+    """Dataset rows should load CIF tensors and superconductivity labels."""
     cif_dir = tmp_path / "cifs"
     cif_dir.mkdir()
     _write_cif(cif_dir / "nacl.cif")
@@ -52,6 +57,7 @@ def test_dataset_reads_csv_and_extracts_crystal_tensors(tmp_path):
 
 
 def test_collate_crystals_pads_variable_atom_counts():
+    """Collation should pad atoms and preserve formula metadata."""
     batch = [
         {
             "X": torch.ones(2, 3),
@@ -83,6 +89,7 @@ def test_collate_crystals_pads_variable_atom_counts():
 
 
 def test_model_returns_superconductivity_outputs_with_placeholder_encoder():
+    """Placeholder encoder should satisfy the supervised model output contract."""
     encoder = PlaceholderCrysJEPAEncoder(z_dim=16)
     model = SuperconductivityCrysJEPA(encoder, z_dim=16, use_uncertainty=True)
     batch = {
@@ -103,6 +110,7 @@ def test_model_returns_superconductivity_outputs_with_placeholder_encoder():
 
 
 def test_metrics_include_superconductor_and_high_tc_slices():
+    """Metrics should include classification and Tc slice diagnostics."""
     y_true = torch.tensor([0.0, 1.0, 1.0, 0.0])
     logits = torch.tensor([-4.0, 3.0, -1.0, 2.0])
     tc_true = torch.tensor([0.0, 20.0, 100.0, 0.0])
@@ -119,6 +127,7 @@ def test_metrics_include_superconductor_and_high_tc_slices():
 
 
 def test_split_dataset_is_reproducible(tmp_path):
+    """Dataset splits should be deterministic for a fixed seed."""
     cif_dir = tmp_path / "cifs"
     cif_dir.mkdir()
     rows = []
@@ -139,6 +148,7 @@ def test_split_dataset_is_reproducible(tmp_path):
 
 
 def test_dataset_ignores_comment_lines_and_resolves_existing_csv_cif_paths(tmp_path):
+    """CSV comments and absolute CIF paths should be handled correctly."""
     cif_dir = tmp_path / "unused_cifs"
     cif_dir.mkdir()
     real_cif = tmp_path / "existing.cif"
@@ -168,6 +178,7 @@ def test_dataset_ignores_comment_lines_and_resolves_existing_csv_cif_paths(tmp_p
 
 
 def test_dataset_falls_back_to_flat_cif_dir_when_csv_contains_historical_path(tmp_path):
+    """Historical nested CIF paths should resolve to the flat local CIF dir."""
     cif_dir = tmp_path / "cifs"
     cif_dir.mkdir()
     _write_cif(cif_dir / "material.cif")
@@ -192,6 +203,7 @@ def test_dataset_falls_back_to_flat_cif_dir_when_csv_contains_historical_path(tm
 
 
 def test_load_cif_tensors_uses_majority_species_for_disordered_sites(tmp_path):
+    """Disordered CIF sites should use the majority species atomic number."""
     cif_path = tmp_path / "disordered.cif"
     structure = Structure(
         Lattice.cubic(4.0),
@@ -209,6 +221,7 @@ def test_load_cif_tensors_uses_majority_species_for_disordered_sites(tmp_path):
 
 
 def test_dft_feature_scaler_fits_train_values_and_imputes_nan():
+    """DFT scaler should learn train statistics and impute NaNs."""
     train_values = torch.tensor(
         [
             [1.0, float("nan")],
@@ -227,6 +240,7 @@ def test_dft_feature_scaler_fits_train_values_and_imputes_nan():
 
 
 def test_dataset_returns_scaled_dft_features_from_configured_columns(tmp_path):
+    """Configured DFT columns should be returned as finite scaled features."""
     cif_dir = tmp_path / "cifs"
     cif_dir.mkdir()
     _write_cif(cif_dir / "nacl.cif")
@@ -252,6 +266,7 @@ def test_dataset_returns_scaled_dft_features_from_configured_columns(tmp_path):
 
 
 def test_model_supports_crys_jepa_dft_and_dft_only_modes():
+    """Supervised model should support fused and DFT-only input modes."""
     batch = {
         "X": torch.rand(2, 3, 3),
         "A": torch.tensor([[8, 8, 0], [14, 0, 0]]),
@@ -286,8 +301,12 @@ def test_model_supports_crys_jepa_dft_and_dft_only_modes():
 
 
 def test_partial_finetuning_unfreezes_only_last_jepa_blocks():
+    """Partial fine-tuning should leave only the final JEPA block trainable."""
     class FakeJEPA(torch.nn.Module):
+        """Minimal JEPA-shaped module for freeze/unfreeze assertions."""
+
         def __init__(self):
+            """Create the attributes expected by partial fine-tuning."""
             super().__init__()
             self.pre_backbone = torch.nn.Linear(2, 2)
             self.backbone = torch.nn.Module()
@@ -310,6 +329,7 @@ def test_partial_finetuning_unfreezes_only_last_jepa_blocks():
 
 
 def test_build_optimizer_uses_separate_encoder_learning_rate():
+    """Optimizer should place trainable encoder parameters in their own LR group."""
     encoder = PlaceholderCrysJEPAEncoder(z_dim=8)
     model = SuperconductivityCrysJEPA(
         encoder,
@@ -335,6 +355,7 @@ def test_build_optimizer_uses_separate_encoder_learning_rate():
 
 
 def test_build_crys_jepa_encoder_reports_missing_checkpoint(tmp_path):
+    """Missing pretrained checkpoints should raise an actionable FileNotFoundError."""
     missing_checkpoint = tmp_path / "missing_pretrained.pt"
     config = {
         "model": {

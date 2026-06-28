@@ -1,3 +1,5 @@
+"""Tests for robust checkpoint creation during supervised training."""
+
 from pathlib import Path
 
 import torch
@@ -6,15 +8,20 @@ from src.training import train as train_module
 
 
 class TinyModel(torch.nn.Module):
+    """Minimal trainable model used to isolate checkpoint logic."""
+
     def __init__(self) -> None:
+        """Create one parameter consumed by optimizer/checkpoint code."""
         super().__init__()
         self.weight = torch.nn.Parameter(torch.tensor([1.0]))
 
     def forward(self, batch):
+        """Return fixed-shape outputs expected by evaluation stubs."""
         return {"tc": self.weight, "logit_supra": self.weight}
 
 
 def test_train_from_config_creates_checkpoint_parent_and_saves_best(tmp_path, monkeypatch):
+    """Verify missing checkpoint directories are created before saving best.pt."""
     checkpoint_dir = tmp_path / "missing" / "checkpoints"
     config = {
         "training": {

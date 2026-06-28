@@ -1,4 +1,6 @@
 
+"""Supervised prediction heads for superconductivity experiments."""
+
 import torch
 import torch.nn as nn
 
@@ -7,6 +9,7 @@ class MLPHead(nn.Module):
     """Small MLP head for supervised prediction from crystal embeddings."""
 
     def __init__(self, in_dim: int, hidden_dim: int, out_dim: int, dropout: float = 0.1) -> None:
+        """Create a normalized two-layer MLP head."""
         super().__init__()
         self.net = nn.Sequential(
             nn.LayerNorm(in_dim),
@@ -17,6 +20,7 @@ class MLPHead(nn.Module):
         )
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
+        """Project crystal representations to the requested output dimension."""
         return self.net(z)
 
 
@@ -37,6 +41,7 @@ class SuperconductivityCrysJEPA(nn.Module):
         dft_feature_dim: int = 0,
         dft_embedding_dim: int = 64,
     ) -> None:
+        """Configure structure, DFT, or fused inputs for Tc and class prediction."""
         super().__init__()
         if input_mode not in self.VALID_INPUT_MODES:
             raise ValueError(f"Unsupported input_mode={input_mode!r}; expected one of {sorted(self.VALID_INPUT_MODES)}")
@@ -83,6 +88,7 @@ class SuperconductivityCrysJEPA(nn.Module):
         self.softplus = nn.Softplus()
 
     def _representation(self, batch: dict) -> torch.Tensor:
+        """Build the representation consumed by the supervised heads."""
         if self.input_mode == "crys_jepa":
             z = self.encoder(batch["X"], batch["A"], batch["L"], batch["atom_mask"])
             return self.structure_norm(z)
@@ -97,6 +103,7 @@ class SuperconductivityCrysJEPA(nn.Module):
         return self.fusion(torch.cat([self.structure_norm(z), dft_z], dim=-1))
 
     def forward(self, batch: dict) -> dict[str, torch.Tensor]:
+        """Return Tc, superconductivity logits, and optional uncertainty."""
         h = self._representation(batch)
         outputs = {
             "tc": self.regression_head(h).squeeze(-1),

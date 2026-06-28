@@ -145,6 +145,8 @@ def get_indices(cum_lengths: Sequence[int], index: int) -> tuple[int, int]:
 
 
 class Metadata(Generic[DataPoint]):
+    """Base class for metadata tracked while writing LMDB data points."""
+
     @abstractmethod
     def __init__(self, value=None):
         """Initialize with an optional value"""

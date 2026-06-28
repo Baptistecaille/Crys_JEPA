@@ -1,3 +1,5 @@
+"""Training loop and checkpoint helpers for supervised 3DSC experiments."""
+
 from pathlib import Path
 
 import torch
@@ -16,18 +18,32 @@ def load_config(path: str | Path) -> dict:
         return yaml.safe_load(handle)
 
 
-def train_one_epoch(model: torch.nn.Module, loader: DataLoader, criterion: SuperconductivityLoss, optimizer, device) -> dict[str, float]:
-    """Run one supervised training epoch."""
+def train_one_epoch(
+    model: torch.nn.Module,
+    loader: DataLoader,
+    criterion: SuperconductivityLoss,
+    optimizer,
+    device,
+    scaler: torch.amp.GradScaler | None = None,
+) -> dict[str, float]:
+    """Run one supervised training epoch, optionally with AMP."""
+    use_amp = scaler is not None and device.type == "cuda"
     model.train()
     totals = {"loss": 0.0, "loss_cls": 0.0, "loss_tc": 0.0}
     n_batches = 0
     for batch in loader:
-        batch = {key: value.to(device) if torch.is_tensor(value) else value for key, value in batch.items()}
+        batch = {key: value.to(device, non_blocking=True) if torch.is_tensor(value) else value for key, value in batch.items()}
         optimizer.zero_grad(set_to_none=True)
-        outputs = model(batch)
-        loss, parts = criterion(outputs, batch)
-        loss.backward()
-        optimizer.step()
+        with torch.amp.autocast(device_type=device.type, enabled=use_amp):
+            outputs = model(batch)
+            loss, parts = criterion(outputs, batch)
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
         for key in totals:
             totals[key] += parts[key]
         n_batches += 1
@@ -97,12 +113,15 @@ def train_from_config(config: dict) -> dict:
     )
     optimizer = build_optimizer(model, config)
 
+    use_amp = bool(training.get("use_amp", True)) and device.type == "cuda"
+    scaler: torch.amp.GradScaler | None = torch.amp.GradScaler() if use_amp else None
+
     best_path = _checkpoint_path(checkpoints)
     best_score = float("inf")
     history = []
 
     for epoch in tqdm(range(1, int(training.get("epochs", 50)) + 1), desc="Training 3DSC MVP"):
-        train_losses = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        train_losses = train_one_epoch(model, train_loader, criterion, optimizer, device, scaler=scaler)
         val_metrics = evaluate_model(model, val_loader, device, high_tc_threshold=float(config.get("evaluation", {}).get("high_tc_threshold", 77.0)))
         val_mae = val_metrics["regression"]["mae"]
         record = {"epoch": epoch, "train": train_losses, "val": val_metrics}

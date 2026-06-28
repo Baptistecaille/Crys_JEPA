@@ -1,3 +1,5 @@
+"""Smoke tests for script importability from the repository root."""
+
 import subprocess
 import sys
 from pathlib import Path
@@ -7,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_scripts_can_import_project_package_from_repo_root():
+    """Ensure CLI scripts can resolve local package imports."""
     for script, args in [
         ("train_mvp.py", ["--help"]),
         ("evaluate_mvp.py", ["--help"]),

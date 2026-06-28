@@ -1,3 +1,5 @@
+"""Evaluation and dataloader construction for supervised superconductivity models."""
+
 from pathlib import Path
 
 import pandas as pd
@@ -117,8 +119,11 @@ def build_loaders(config: dict) -> tuple[DataLoader, DataLoader, DataLoader]:
         config.setdefault("model", {})["dft_feature_dim"] = len(dft_columns)
 
     batch_size = int(train_cfg.get("batch_size", 32))
+    num_workers = int(train_cfg.get("num_workers", 2))
+    pin_memory = bool(train_cfg.get("pin_memory", True))
+    loader_kwargs = {"batch_size": batch_size, "collate_fn": collate_crystals, "num_workers": num_workers, "pin_memory": pin_memory}
     return (
-        DataLoader(train_set, batch_size=batch_size, shuffle=True, collate_fn=collate_crystals),
-        DataLoader(val_set, batch_size=batch_size, shuffle=False, collate_fn=collate_crystals),
-        DataLoader(test_set, batch_size=batch_size, shuffle=False, collate_fn=collate_crystals),
+        DataLoader(train_set, shuffle=True, **loader_kwargs),
+        DataLoader(val_set, shuffle=False, **loader_kwargs),
+        DataLoader(test_set, shuffle=False, **loader_kwargs),
     )

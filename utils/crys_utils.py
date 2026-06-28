@@ -16,6 +16,8 @@ from pymatgen.core import Structure, Element
 
 
 class Crystal(object):
+    """Convenience wrapper around generated crystal arrays and validity checks."""
+
     def __init__(self, crys_array_dict, gt=False, cart=False, test_validity=True):
         """Wrap a generated crystal dictionary and validate the resulting structure."""
         self.cart = cart

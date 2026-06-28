@@ -17,6 +17,8 @@ from eval.vsun.reference.utils import expand_into_subsystems
 from eval.vsun.utils import get_unique, get_matches, get_mask_from_local_index, get_global_match_dict_from_local_dict, matches_to_mask
 
 class Evaluator:
+    """Compute stability, uniqueness, and novelty masks for generated crystals."""
+
     def __init__(self, args, gen_ref, reference):
         """Bind the generated dataset, reference dataset, and evaluation settings."""
         self.args = args
@@ -129,4 +131,3 @@ class Evaluator:
 
         self.n_indicator = np.logical_not(matches_to_mask(global_match_dict.keys(), len(self.gen_ref)))
         return self.n_indicator
-

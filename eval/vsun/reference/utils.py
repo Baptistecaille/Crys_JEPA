@@ -25,6 +25,7 @@ def generate_reduced_formula_dict(
     """Generate a dictionary of entries with the same reduced formula."""
 
     def keyfunc(entry: ComputedStructureEntry) -> str:
+        """Group by reduced formula after stripping oxidation states."""
         entry.structure.unset_charge()
         return entry.structure.remove_oxidation_states().composition.reduced_formula
 
@@ -37,6 +38,7 @@ def generate_chemsys_dict(
     """Generate a dictionary of entries with the same chemical system."""
 
     def keyfunc(entry: ComputedStructureEntry) -> str:
+        """Group by sorted chemical-system string."""
         return "-".join(sorted({el.symbol for el in entry.composition.elements}))
 
     return group_list_items_into_dict(entries, keyfunc=keyfunc)
@@ -61,4 +63,3 @@ def expand_into_subsystems(chemical_system: str) -> list[tuple[str, ...]]:
     for n in range(1, len(elements) + 1):
         list_combinations += list(combinations(elements, n))  ## C_{elements}^n
     return list_combinations
-

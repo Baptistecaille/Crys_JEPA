@@ -1,3 +1,5 @@
+"""Adapters that expose Crys-JEPA encoders to supervised training code."""
+
 from pathlib import Path
 
 import torch
@@ -27,6 +29,7 @@ class IdentityScaler:
     """Fallback matrix scaler used when Crys-JEPA scaling statistics are unavailable."""
 
     def transform(self, tensor: torch.Tensor) -> torch.Tensor:
+        """Return lattice features unchanged when no learned scaler is available."""
         return tensor
 
 
@@ -34,6 +37,7 @@ class PlaceholderCrysJEPAEncoder(nn.Module):
     """Small compatible encoder used until a pretrained Crys-JEPA checkpoint is supplied."""
 
     def __init__(self, z_dim: int = 512, max_atomic_number: int = 100, hidden_dim: int | None = None) -> None:
+        """Build a light structure encoder with the same output contract as Crys-JEPA."""
         super().__init__()
         hidden = hidden_dim or z_dim
         self.z_dim = z_dim
@@ -43,6 +47,7 @@ class PlaceholderCrysJEPAEncoder(nn.Module):
         self.out = nn.Sequential(nn.LayerNorm(hidden * 2), nn.Linear(hidden * 2, z_dim), nn.SiLU())
 
     def forward(self, X: torch.Tensor, A: torch.Tensor, L: torch.Tensor, atom_mask: torch.Tensor) -> torch.Tensor:
+        """Pool atom and lattice features into one crystal embedding."""
         atom_emb = self.atom_embedding(A.clamp(min=0, max=self.atom_embedding.num_embeddings - 1))
         coord_emb = self.coord_mlp(X)
         tokens = (atom_emb + coord_emb) * atom_mask.unsqueeze(-1)
@@ -97,6 +102,7 @@ class CrysJEPAEncoderAdapter(nn.Module):
         freeze_encoder: bool = True,
         unfreeze_last_n_layers: int = 0,
     ) -> None:
+        """Load a JEPA checkpoint and prepare its trainable/frozen parameter state."""
         super().__init__()
         checkpoint_path = Path(checkpoint_path).expanduser()
         if not checkpoint_path.exists():
@@ -128,11 +134,13 @@ class CrysJEPAEncoderAdapter(nn.Module):
             configure_jepa_partial_finetuning(self.encoder, unfreeze_last_n_layers=unfreeze_last_n_layers)
 
     def forward(self, X: torch.Tensor, A: torch.Tensor, L: torch.Tensor, atom_mask: torch.Tensor) -> torch.Tensor:
+        """Encode a padded crystal batch, disabling gradients when frozen."""
         context = torch.no_grad() if self.freeze_encoder else torch.enable_grad()
         with context:
             return self._encode(X, A, L, atom_mask)
 
     def _encode(self, X: torch.Tensor, A: torch.Tensor, L: torch.Tensor, atom_mask: torch.Tensor) -> torch.Tensor:
+        """Flatten padded atoms into the sparse representation expected by JEPA."""
         bsz, max_atoms, _ = X.shape
         device = X.device
         num_atoms = atom_mask.sum(dim=1).long().clamp_min(1)

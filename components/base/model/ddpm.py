@@ -17,6 +17,8 @@ from components.base.model.transformer import Transformer
 from tqdm import tqdm
 
 class DDPM(nn.Module):
+    """Diffusion model that jointly denoises lattice, atom type, and coordinates."""
+
     def __init__(self, config):
         """Build the crystal diffusion model and its three noise channels."""
         super(DDPM, self).__init__()

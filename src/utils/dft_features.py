@@ -1,4 +1,6 @@
 
+"""Scaling helpers for optional DFT feature inputs."""
+
 import numpy as np
 import torch
 
@@ -7,6 +9,7 @@ class DFTFeatureScaler:
     """Train-split scaler for numerical DFT features with median imputation."""
 
     def __init__(self, median: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> None:
+        """Store imputation and standardization statistics."""
         self.median = median.float()
         self.mean = mean.float()
         self.std = std.float().clamp_min(1e-8)

@@ -11,6 +11,8 @@ import math
 
 
 class frac_noise(nn.Module):
+    """Forward and reverse diffusion process for fractional coordinates."""
+
     def __init__(self, T):
         """Create the fractional-coordinate diffusion schedule."""
         super(frac_noise, self).__init__()

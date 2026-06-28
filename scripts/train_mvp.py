@@ -1,3 +1,5 @@
+"""CLI wrapper for training the 3DSC superconductivity MVP."""
+
 import argparse
 
 import _bootstrap  # noqa: F401

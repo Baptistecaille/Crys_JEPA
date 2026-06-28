@@ -11,6 +11,8 @@ import math
 
 
 class matrix_noise(nn.Module):
+    """Forward and reverse diffusion process for compact lattice features."""
+
     def __init__(self, T):
         """Create the lattice diffusion schedule for a given timestep count."""
         super(matrix_noise, self).__init__()

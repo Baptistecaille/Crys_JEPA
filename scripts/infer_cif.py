@@ -1,3 +1,5 @@
+"""CLI wrapper for single-CIF superconductivity inference."""
+
 import argparse
 
 import _bootstrap  # noqa: F401

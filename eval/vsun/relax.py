@@ -29,6 +29,8 @@ import pandas as pd
 
 
 class RelaxationData:
+    """Mutable container used to assemble relaxation outputs into a dataframe."""
+
     def __init__(self):
         """Collect relaxation results for a batch of structures."""
         self.index = []
@@ -38,6 +40,8 @@ class RelaxationData:
         self.exception = []
 
 class DummyBatchCalculator(Calculator):
+    """ASE calculator shim that returns properties predicted in batch."""
+
     def __init__(self):
         """Create a lightweight calculator that reuses stored predictions."""
         super().__init__()
@@ -79,6 +83,7 @@ class BatchRelaxer(object):
         step: int = 500,
         device = None,
     ):
+        """Configure the optimizer, batching limits, and force-field backend."""
         self.potential = potential
         self.device = device
         self.optimizer = self.SUPPORTED_OPTIMIZERS[optimizer]

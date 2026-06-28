@@ -1,4 +1,6 @@
 
+"""Single-CIF inference helpers for supervised Crys-JEPA checkpoints."""
+
 from pathlib import Path
 
 import torch

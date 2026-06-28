@@ -7,6 +7,7 @@ structured progress messages into its own experiment directory.
 import logging
 
 def get_logger(level=logging.INFO, path='log.log') -> logging.Logger:
+    """Create a root logger that writes both to stdout and a log file."""
     handler1 = logging.StreamHandler()
     handler2 = logging.FileHandler(path)
     formatter = logging.Formatter('%(levelname)s - %(filename)s - %(asctime)s - %(message)s')

@@ -23,6 +23,8 @@ def type_coords(frac_coords, atomic_numbers):
     return index_order
 
 class CrystalDataset(Dataset):
+    """PyTorch dataset that serves train/validation crystals for base DDPM training."""
+
     def __init__(self, task, dataset, config, val=False):
         """Load and cache the crystal dataset for the base DDPM stage."""
         if val:

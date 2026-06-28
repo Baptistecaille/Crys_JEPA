@@ -1,3 +1,5 @@
+"""Loss functions for superconductivity classification and Tc regression."""
+
 import torch
 import torch.nn as nn
 
@@ -6,6 +8,7 @@ class SuperconductivityLoss(nn.Module):
     """Combined BCE classification and robust Tc regression loss."""
 
     def __init__(self, lambda_tc: float = 1.0, regression_loss: str = "smooth_l1") -> None:
+        """Configure classification plus weighted regression losses."""
         super().__init__()
         self.lambda_tc = lambda_tc
         self.cls_loss = nn.BCEWithLogitsLoss()
@@ -17,6 +20,7 @@ class SuperconductivityLoss(nn.Module):
             raise ValueError(f"Unsupported regression_loss: {regression_loss}")
 
     def forward(self, outputs: dict, batch: dict) -> tuple[torch.Tensor, dict[str, float]]:
+        """Compute total loss and detached scalar parts for logging."""
         cls = self.cls_loss(outputs["logit_supra"], batch["label_supra"])
         tc = self.tc_loss(outputs["tc"], batch["Tc"])
         total = cls + self.lambda_tc * tc

@@ -22,6 +22,8 @@ def batch_type_coords(coords, atomic_numbers):
     return batch_index_order
     
 class JEPA(nn.Module):
+    """Joint-embedding predictive architecture for crystal representation learning."""
+
     def __init__(self, config, matrix_scaler=None):
         """Build the JEPA model, predictor, and conditioning projection."""
         super().__init__()

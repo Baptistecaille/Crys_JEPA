@@ -1,3 +1,5 @@
+"""Reproducibility utilities shared by training scripts."""
+
 import random
 
 import numpy as np

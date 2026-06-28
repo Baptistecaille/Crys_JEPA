@@ -1,3 +1,5 @@
+"""Compare frozen and partially unfrozen Crys-JEPA fine-tuning setups."""
+
 import argparse
 import csv
 from pathlib import Path
@@ -13,6 +15,7 @@ CONFIGS = [
 
 
 def _flatten(mode: str, result: dict) -> dict:
+    """Flatten nested training metrics into one CSV row."""
     cls = result["test_metrics"]["classification"]
     reg = result["test_metrics"]["regression"]
     return {
@@ -32,6 +35,7 @@ def _flatten(mode: str, result: dict) -> dict:
 
 
 def main(checkpoint: str, matrix_scaler: str | None, output: str) -> None:
+    """Run all fine-tuning configs against a shared pretrained checkpoint."""
     rows = []
     for mode, config_path in CONFIGS:
         config = load_config(config_path)

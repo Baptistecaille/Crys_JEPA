@@ -1,3 +1,5 @@
+"""Dataset utilities for supervised 3DSC superconductivity experiments."""
+
 from pathlib import Path
 from typing import Sequence
 
@@ -27,6 +29,7 @@ class ThreeDSCDataset(Dataset):
         primitive: bool = False,
         reduced: bool = False,
     ) -> None:
+        """Read the CSV metadata and remember how CIF paths/features are resolved."""
         self.csv_path = Path(csv_path)
         self.cif_dir = Path(cif_dir)
         self.formula_column = formula_column
@@ -41,6 +44,7 @@ class ThreeDSCDataset(Dataset):
         self._validate_columns()
 
     def _validate_columns(self) -> None:
+        """Fail early when required metadata or DFT columns are absent."""
         missing = [
             column
             for column in (self.tc_column, self.cif_column, *self.dft_feature_columns)
@@ -50,9 +54,11 @@ class ThreeDSCDataset(Dataset):
             raise ValueError(f"Missing required 3DSC CSV columns: {missing}")
 
     def __len__(self) -> int:
+        """Return the number of rows in the supervised CSV."""
         return len(self.rows)
 
     def __getitem__(self, index: int) -> dict:
+        """Load one CIF-backed row and attach labels/features for training."""
         row = self.rows.iloc[index]
         tc = float(row[self.tc_column])
         cif_path = self._resolve_cif_path(row[self.cif_column])
@@ -86,11 +92,13 @@ class ThreeDSCDataset(Dataset):
         return torch.tensor(values.to_numpy(dtype=np.float32), dtype=torch.float32)
 
     def _row_dft_features(self, row) -> torch.Tensor:
+        """Read configured DFT columns from one row, preserving missing values as NaN."""
         values = [pd.to_numeric(row[column], errors="coerce") for column in self.dft_feature_columns]
         values = [float(value) if pd.notna(value) else float("nan") for value in values]
         return torch.tensor(values, dtype=torch.float32)
 
     def _resolve_cif_path(self, value: object) -> Path:
+        """Resolve historical and local CIF paths against the configured CIF directory."""
         path = Path(str(value))
         if path.is_absolute():
             return path

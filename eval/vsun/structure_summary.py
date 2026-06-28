@@ -147,6 +147,8 @@ class VasprunLike:
     
 @dataclass
 class MetricsStructureSummary:
+    """Relaxed structure plus corrected computed-entry metadata for metrics."""
+
     entry: ComputedStructureEntry
     properties: dict[str, float] = field(default_factory=dict)
 

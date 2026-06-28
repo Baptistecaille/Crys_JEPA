@@ -25,6 +25,8 @@ def type_coords(coords, atomic_numbers):
     return index_order
 
 class CrystalDataset(Dataset):
+    """PyTorch dataset that serves JEPA pretraining crystals and energy labels."""
+
     def __init__(self, config):
         """Build the combined JEPA pretraining dataset."""
         self.config = config

@@ -69,6 +69,8 @@ def parse_args_and_config(task):
     return args, new_config
 
 class Scaler_min_max(object):
+    """Simple tensor min-max scaler persisted alongside experiment data."""
+
     def __init__(self, min=None, max=None):
         """Store min/max values for simple linear rescaling."""
         self.min = min
@@ -101,6 +103,8 @@ class Scaler_min_max(object):
         self.min, self.max = re
 
 class Scaler_mean_std(object):
+    """Feature-wise standardization scaler persisted alongside experiment data."""
+
     def __init__(self, means=None, stds=None, replace_nan_token=None):
         """Store mean/std statistics for standardization."""
         self.means = means

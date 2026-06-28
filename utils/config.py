@@ -169,6 +169,7 @@ def easydict2dict(ed):
 
 
 def get_params(args, down=True):
+    """Load config and optionally save the resolved backup copy into the log dir."""
     cfg = parse_cfg(args.cfg, args.conf_new)
     if down:
         with open(os.path.join(args.log, "backup-config.yaml"), 'w') as f:

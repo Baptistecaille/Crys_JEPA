@@ -46,10 +46,14 @@ def gzip_decompress(gzip_file_path: str | os.PathLike, output_dir: str | os.Path
 
 
 class LmdbNotFoundError(Exception):
+    """Raised when a serialized LMDB reference dataset cannot be found."""
+
     pass
 
 
 class LMDBGZSerializer():
+    """Serializer for reference datasets stored as gzip-compressed LMDB files."""
+
     def __init__(
         self,
     ):
@@ -253,12 +257,14 @@ class WeakRefImplMixin:
     LMDBBackedReferenceDatasetImpl object weak."""
 
     def __init__(self, impl: LMDBBackedReferenceDatasetImpl):
+        """Store a weak reference to the LMDB-backed implementation."""
         # We need to use a weak reference to avoid cyclic reference that
         # prevents LMDBBackedReferenceDatasetImpl from being garbage collected.
         self._impl = weakref.ref(impl)
 
     @property
     def impl(self) -> LMDBBackedReferenceDatasetImpl:
+        """Return the still-live LMDB-backed implementation."""
         # Returns the LMDBBackedReferenceDatasetImpl object ensuring that
         # the reference is still valid.
         impl = self._impl()
@@ -272,20 +278,25 @@ class LMDBBackedChemicalSystemLookup(WeakRefImplMixin, Mapping[str, list[Compute
     the user requests them."""
 
     def __init__(self, impl: LMDBBackedReferenceDatasetImpl):
+        """Create a lazy lookup over chemical systems."""
         super().__init__(impl)
         self.chemical_systems = frozenset(self.impl.chemical_systems)
 
     def __len__(self) -> int:
+        """Return the number of chemical systems."""
         return len(self.impl.chemical_systems)
 
     def __iter__(self) -> Iterator[str]:
+        """Iterate chemical systems in the stored order."""
         # keep the original order
         return iter(self.impl.chemical_systems)
 
     def __contains__(self, chemical_system: object) -> bool:
+        """Return whether a chemical system is present."""
         return chemical_system in self.chemical_systems
 
     def __getitem__(self, chemical_system: str) -> list[ComputedStructureEntry]:
+        """Load all entries for one chemical system."""
         return list(self.impl.get_entries_by_chemsys(chemical_system))
 
 
@@ -295,17 +306,21 @@ class LMDBBackedReducedFormulaLookup(WeakRefImplMixin, Mapping[str, list[Compute
     the user requests them."""
 
     def __init__(self, impl: LMDBBackedReferenceDatasetImpl):
+        """Create a lazy lookup over reduced formulas."""
         super().__init__(impl)
         self.reduced_formulas = frozenset(self.impl.reduced_formulas)
 
     def __len__(self) -> int:
+        """Return the number of reduced formulas."""
         return len(self.reduced_formulas)
 
     def __iter__(self) -> Iterator[str]:
+        """Iterate reduced formulas in the stored order."""
         # keep the original order
         return iter(self.impl.reduced_formulas)
 
     def __contains__(self, reduced_formula: object) -> bool:
+        """Return whether a reduced formula is present."""
         return reduced_formula in self.reduced_formulas
 
     def __getitem__(self, reduced_formula: str) -> list[ComputedStructureEntry]:

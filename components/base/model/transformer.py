@@ -9,6 +9,8 @@ import torch.nn as nn
 import math
 
 class MLP(nn.Module):
+    """Small feed-forward projection block used by the DDPM transformer."""
+
     def __init__(self, in_dim, hidden_dim, out_dim, n_layers=2):
         """Build a feed-forward block used inside the transformer stack."""
         assert n_layers >= 2
@@ -28,6 +30,8 @@ class MLP(nn.Module):
         return x
 
 class MHA(nn.Module):
+    """Multi-head self-attention layer with pairwise padding-mask suppression."""
+
     def __init__(self, attn_head, dim, dropout):
         """Create a masked multi-head self-attention layer."""
         super(MHA, self).__init__()
@@ -62,6 +66,8 @@ class MHA(nn.Module):
         return attn_out
 
 class Decoder_layer(nn.Module):
+    """Single transformer decoder block used during denoising."""
+
     def __init__(self, dim, attn_head, dropout):
         """Combine masked self-attention and an MLP residual block."""
         assert dim % attn_head == 0
@@ -90,6 +96,8 @@ class Decoder_layer(nn.Module):
         return h
 
 class Sine_PE_t(nn.Module):
+    """Sinusoidal positional encoding specialized for diffusion timesteps."""
+
     def __init__(self, time_dim):
         """Create sinusoidal timestep embeddings."""
         super(Sine_PE_t, self).__init__()
@@ -103,6 +111,8 @@ class Sine_PE_t(nn.Module):
         return torch.cat([sin_pe, cos_pe], -1)
     
 class Transformer(nn.Module):
+    """Crystal-token transformer that predicts DDPM noise channels."""
+
     def __init__(self, config):
         """Build the crystal transformer decoder used by DDPM."""
         super(Transformer, self).__init__()

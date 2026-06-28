@@ -11,6 +11,8 @@ import math
 
 
 class type_noise(nn.Module):
+    """Forward and reverse diffusion process for atom-type features."""
+
     def __init__(self, T):
         """Create the atom-type diffusion schedule."""
         super(type_noise, self).__init__()

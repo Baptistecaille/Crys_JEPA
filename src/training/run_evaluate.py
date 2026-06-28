@@ -1,4 +1,6 @@
 
+"""Checkpoint evaluation entrypoint used by scripts and notebooks."""
+
 from pathlib import Path
 
 import torch

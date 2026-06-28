@@ -1,9 +1,12 @@
+"""Metric helpers for supervised superconductivity prediction."""
+
 import math
 
 import torch
 
 
 def _safe_div(num: float, den: float) -> float:
+    """Divide while returning zero for empty metric denominators."""
     return num / den if den else 0.0
 
 

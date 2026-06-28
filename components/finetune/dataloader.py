@@ -25,6 +25,8 @@ def type_coords(frac_coords, atomic_numbers):
 
 
 class CrystalDataset(Dataset):
+    """PyTorch dataset that serves screened CIFs for final fine-tuning."""
+
     def __init__(self, task, dataset, config):
         """Load and cache the finetune dataset built from multiple CSV shards."""
         paths = [os.path.join('data', task, dataset, 'ft_'+str(i)+'.csv') for i in range(config.n_value)]
