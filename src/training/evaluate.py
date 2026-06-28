@@ -121,7 +121,15 @@ def build_loaders(config: dict) -> tuple[DataLoader, DataLoader, DataLoader]:
     batch_size = int(train_cfg.get("batch_size", 32))
     num_workers = int(train_cfg.get("num_workers", 2))
     pin_memory = bool(train_cfg.get("pin_memory", True))
-    loader_kwargs = {"batch_size": batch_size, "collate_fn": collate_crystals, "num_workers": num_workers, "pin_memory": pin_memory}
+    persistent = num_workers > 0
+    loader_kwargs = {
+        "batch_size": batch_size,
+        "collate_fn": collate_crystals,
+        "num_workers": num_workers,
+        "pin_memory": pin_memory,
+        "persistent_workers": persistent,
+        "prefetch_factor": 2 if persistent else None,
+    }
     return (
         DataLoader(train_set, shuffle=True, **loader_kwargs),
         DataLoader(val_set, shuffle=False, **loader_kwargs),
